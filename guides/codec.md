@@ -23,9 +23,10 @@ cannot drift apart.
 
 ### Codings
 
-The RFC 4648 faces, from [`helpers.ts`](../src/core/helpers.ts). `Base64` names the §4 coding and
-`Base64URL` the §5 one; the alphabets and the reverse lookup behind them are module data, not
-public API, because publishing an alphabet invites hand-rolling the coding it belongs to.
+The RFC 4648 faces: the codings from [`helpers.ts`](../src/core/helpers.ts) and the guards from
+[`validators.ts`](../src/core/validators.ts). `Base64` names the §4 coding and `Base64URL` the §5
+one; the alphabets and the reverse lookup behind them are module data, not public API, because
+publishing an alphabet invites hand-rolling the coding it belongs to.
 
 | Name              | Kind     | Signature                                   | Behavior                                                                                                                                                            |
 | ----------------- | -------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -47,12 +48,15 @@ empty one included.
 admits.
 
 The canonical-form law is the one that does the work. It says a decoder may accept only the
-spelling its own encoder produces, which rules out every lenient door at once: the wrong alphabet,
-embedded whitespace, missing or excess padding, a length off the four-character group boundary, and
-a non-zero unused trailing bit. That last refusal is the one consumers meet: `'aa=='` carries a set
-bit in the sextet the padding discards, so `decodeBase64('aa==')` is `undefined` and
-`isBase64('aa==')` is false. `'aQ=='` is the canonical spelling of the byte `'aa=='` was reaching
-for, and it decodes. The url face refuses `'aa'` for the same reason, and admits `'aQ'`.
+spelling its own encoder produces, which rules out every lenient door at once: the wrong alphabet
+and embedded whitespace close for both faces. Missing or excess padding and a length off the
+four-character group boundary are the §4 doors; §5 spells the same closure its own way — the
+unpadded url alphabet, refusing `=`, `+`, and `/` outright, and refusing any `length % 4 === 1`
+residue, which no amount of padding can complete. And a non-zero unused trailing bit closes last,
+for both faces alike. That last refusal is the one consumers meet: `'aa=='` carries a set bit in
+the sextet the padding discards, so `decodeBase64('aa==')` is `undefined` and `isBase64('aa==')` is
+false. `'aQ=='` is the canonical spelling of the byte `'aa=='` was reaching for, and it decodes.
+The url face refuses `'aa'` for the same reason, and admits `'aQ'`.
 
 ## Membership
 
@@ -158,10 +162,10 @@ if (decoded !== undefined) encodeBase64(decoded) // === text
 
 - [`tests/src/core/helpers.test.ts`](../tests/src/core/helpers.test.ts) — both laws as sweeps: the
   whole octet space in one buffer, every padding residue, every single byte and every byte pair,
-  and an exhaustive walk over short texts spanning both alphabets that binds each guard to its
-  decoder and re-encodes every admitted text to itself; the named vectors; the canonical refusals;
-  the alphabets read against the specification in both directions; and guard totality against
-  hostile values.
+  and an exhaustive walk over short texts spanning both alphabets that re-encodes every admitted
+  text to itself; the written-out membership rows that bind each guard to its decoder; the named
+  vectors; the canonical refusals; the alphabets read against the specification in both
+  directions; and guard totality against hostile values.
 - [`tests/policy.test.ts`](../tests/policy.test.ts) — repository coding law: source placement,
   exports, and syntax.
 - [`tests/config.test.ts`](../tests/config.test.ts) — the root configuration's aliases, projects,

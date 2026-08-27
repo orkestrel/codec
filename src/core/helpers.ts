@@ -82,26 +82,6 @@ export function decodeBase64(text: string): Uint8Array | undefined {
 }
 
 /**
- * Checks whether a value is canonical standard Base64 text.
- *
- * @remarks
- * True for exactly the strings {@link decodeBase64} answers bytes for, because it asks that
- * decoder. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.
- *
- * @param value - The value to test.
- * @returns True if `value` is canonical §4 Base64 text; false otherwise.
- *
- * @example
- * ```ts
- * isBase64('aGk=') // true
- * isBase64('aGk') // false
- * ```
- */
-export function isBase64(value: unknown): value is string {
-	return typeof value === 'string' && decodeBase64(value) !== undefined
-}
-
-/**
  * Encodes a byte sequence as unpadded base64url.
  *
  * @remarks
@@ -144,24 +124,4 @@ export function decodeBase64URL(text: string): Uint8Array | undefined {
 	const standard = text.replaceAll('-', '+').replaceAll('_', '/')
 	const remainder = standard.length % 4
 	return decodeBase64(remainder === 0 ? standard : standard + '='.repeat(4 - remainder))
-}
-
-/**
- * Checks whether a value is canonical base64url text.
- *
- * @remarks
- * True for exactly the strings {@link decodeBase64URL} answers bytes for, because it asks that
- * decoder. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.
- *
- * @param value - The value to test.
- * @returns True if `value` is canonical §5 base64url text; false otherwise.
- *
- * @example
- * ```ts
- * isBase64URL('aGk') // true
- * isBase64URL('aGk=') // false
- * ```
- */
-export function isBase64URL(value: unknown): value is string {
-	return typeof value === 'string' && decodeBase64URL(value) !== undefined
 }

@@ -5,10 +5,13 @@
 // policy sweep rejects. Entry `c` of the table is the index of `c` in BASE64_ALPHABET, and the
 // alphabet sweep in tests/src/core/helpers.test.ts fails on any single-entry disagreement.
 
-/** The RFC 4648 §4 alphabet, index-ordered, used to build {@link BASE64_LOOKUP}. */
+/** The RFC 4648 §4 alphabet, index-ordered; {@link BASE64_LOOKUP} is transcribed against it. */
 export const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
-/** Base64 character to 6-bit value lookup table, derived from {@link BASE64_ALPHABET}. */
+/**
+ * Base64 character to 6-bit value lookup, transcribed against {@link BASE64_ALPHABET}; the
+ * alphabet sweep in tests/src/core/helpers.test.ts fails on any single-entry disagreement.
+ */
 export const BASE64_LOOKUP: Readonly<Record<string, number>> = Object.freeze({
 	A: 0,
 	B: 1,
