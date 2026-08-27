@@ -1,0 +1,112 @@
+import type { UserConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
+import manifest from './package.json' with { type: 'json' }
+import tsconfig from './tsconfig.json' with { type: 'json' }
+import { enforceBuildLog } from './configs/helpers.js'
+import { fileURLToPath, URL } from 'node:url'
+
+export function resolveWorkspacePath(relativePath: string): string {
+	return fileURLToPath(new URL(relativePath, import.meta.url))
+}
+
+const peerDependencies = 'peerDependencies' in manifest ? manifest.peerDependencies : undefined
+if (
+	peerDependencies !== undefined &&
+	(typeof peerDependencies !== 'object' ||
+		peerDependencies === null ||
+		Array.isArray(peerDependencies))
+) {
+	throw new Error('package peerDependencies must be an object')
+}
+export const peers: readonly string[] =
+	peerDependencies === undefined ? [] : Object.keys(peerDependencies)
+
+const resolve = {
+	alias: Object.entries(tsconfig.compilerOptions.paths).reduce((aliases, [key, values]) => {
+		const [path] = values
+		if (path === undefined) throw new Error('tsconfig path alias ' + key + ' has no target')
+		return Object.assign(aliases, { [key]: resolveWorkspacePath(path) })
+	}, {}),
+}
+
+export const srcCore = (): UserConfig => ({
+	resolve,
+	publicDir: false,
+	build: {
+		emptyOutDir: true,
+		sourcemap: true,
+		minify: false,
+		rolldownOptions: { onLog: enforceBuildLog },
+	},
+	test: {
+		name: { label: 'src:core', color: 'magenta' },
+		include: ['tests/src/core/**/*.test.ts'],
+		setupFiles: ['./tests/setup.ts'],
+		environment: 'node',
+		browser: { enabled: false },
+	},
+})
+
+export const policy = (): UserConfig => ({
+	resolve,
+	test: {
+		name: { label: 'policy', color: 'white' },
+		include: ['tests/policy.test.ts'],
+		setupFiles: ['./tests/setup.ts'],
+		environment: 'node',
+		browser: { enabled: false },
+	},
+})
+
+export const config = (): UserConfig => ({
+	resolve,
+	test: {
+		name: { label: 'config', color: 'yellow' },
+		include: ['tests/config.test.ts'],
+		setupFiles: ['./tests/setup.ts'],
+		environment: 'node',
+		browser: { enabled: false },
+		// A config test validates every target wrapper and runs the real linter twice with
+		// 15-second child caps, so this budget clears both caps and reports their diagnostics.
+		testTimeout: 45_000,
+	},
+})
+
+export const distribution = (): UserConfig => ({
+	resolve,
+	test: {
+		name: { label: 'distribution', color: 'cyan' },
+		include: ['tests/distribution.test.ts'],
+		setupFiles: ['./tests/setup.ts'],
+		environment: 'node',
+		testTimeout: 120_000,
+		hookTimeout: 120_000,
+		fileParallelism: false,
+	},
+})
+
+// A workbench, not a proof. No gate selects this project. Run in test mode by the
+// `test:probe` script, it collects `tmp/probe/**/*.test.ts`. Run in benchmark mode by the
+// `test:bench` script, the same workbench also collects `tests/**/*.test.ts` for a `bench` block,
+// so a suite may carry a bench beside its ordinary tests without a second project. The mode
+// guard around each `bench` call keeps it out of test mode, so it never executes there.
+export const probe = (): UserConfig => ({
+	resolve,
+	test: {
+		name: { label: 'probe', color: 'black' },
+		include: ['tmp/probe/**/*.test.ts'],
+		setupFiles: ['./tests/setup.ts'],
+		environment: 'node',
+		browser: { enabled: false },
+		fileParallelism: false,
+		pool: 'threads',
+		benchmark: { include: ['tmp/probe/**/*.test.ts', 'tests/**/*.test.ts'] },
+	},
+})
+
+export default defineConfig({
+	resolve,
+	test: {
+		projects: [srcCore, policy, config, distribution, probe],
+	},
+})
