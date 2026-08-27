@@ -57,7 +57,7 @@ export function encodeBase64(bytes: Uint8Array): string {
  * decodeBase64('aa==') // undefined
  * ```
  */
-export function decodeBase64(text: string): Uint8Array | undefined {
+export function decodeBase64(text: string): Uint8Array<ArrayBuffer> | undefined {
 	if (text.length % 4 !== 0) return undefined
 	const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0
 	const bytes = new Uint8Array((text.length / 4) * 3 - padding)
@@ -119,7 +119,7 @@ export function encodeBase64URL(bytes: Uint8Array): string {
  * decodeBase64URL('aGk=') // undefined
  * ```
  */
-export function decodeBase64URL(text: string): Uint8Array | undefined {
+export function decodeBase64URL(text: string): Uint8Array<ArrayBuffer> | undefined {
 	if (text.includes('+') || text.includes('/') || text.includes('=')) return undefined
 	const standard = text.replaceAll('-', '+').replaceAll('_', '/')
 	const remainder = standard.length % 4

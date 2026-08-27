@@ -28,14 +28,14 @@ The RFC 4648 faces: the codings from [`helpers.ts`](../src/core/helpers.ts) and 
 one; the alphabets and the reverse lookup behind them are module data, not public API, because
 publishing an alphabet invites hand-rolling the coding it belongs to.
 
-| Name              | Kind     | Signature                                   | Behavior                                                                                                                                                            |
-| ----------------- | -------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `encodeBase64`    | function | `(bytes: Uint8Array) => string`             | Spells `bytes` in the RFC 4648 §4 alphabet (`+`, `/`) with `=` padding — the canonical form, and the only form `decodeBase64` accepts. Total: encoding cannot fail. |
-| `decodeBase64`    | function | `(text: string) => Uint8Array \| undefined` | Reads back exactly what `encodeBase64` writes. Every other text — wrong alphabet, whitespace, wrong padding, a non-zero unused trailing bit — is `undefined`.       |
-| `isBase64`        | function | `(value: unknown) => value is string`       | True for exactly the strings `decodeBase64` answers bytes for. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.               |
-| `encodeBase64URL` | function | `(bytes: Uint8Array) => string`             | Spells `bytes` in the RFC 4648 §5 url alphabet (`-`, `_`) with the padding removed — the canonical form, and the only form `decodeBase64URL` accepts. Total.        |
-| `decodeBase64URL` | function | `(text: string) => Uint8Array \| undefined` | Reads back exactly what `encodeBase64URL` writes. A padded text, a `+`, or a `/` belongs to the §4 face and is `undefined` here.                                    |
-| `isBase64URL`     | function | `(value: unknown) => value is string`       | True for exactly the strings `decodeBase64URL` answers bytes for. Total on any value.                                                                               |
+| Name              | Kind     | Signature                                  | Behavior                                                                                                                                                            |
+| ----------------- | -------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `encodeBase64`    | function | `(bytes: Uint8Array) => string`            | Spells `bytes` in the RFC 4648 §4 alphabet (`+`, `/`) with `=` padding — the canonical form, and the only form `decodeBase64` accepts. Total: encoding cannot fail. |
+| `decodeBase64`    | function | `(text: string) => Uint8Array<ArrayBuffer> | undefined`\|`(text: string) => Uint8Array<ArrayBuffer>                                                                                                              | undefined` | Reads back exactly what `encodeBase64` writes. Every other text — wrong alphabet, whitespace, wrong padding, a non-zero unused trailing bit — is `undefined`. |
+| `isBase64`        | function | `(value: unknown) => value is string`      | True for exactly the strings `decodeBase64` answers bytes for. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.               |
+| `encodeBase64URL` | function | `(bytes: Uint8Array) => string`            | Spells `bytes` in the RFC 4648 §5 url alphabet (`-`, `_`) with the padding removed — the canonical form, and the only form `decodeBase64URL` accepts. Total.        |
+| `decodeBase64URL` | function | `(text: string) => Uint8Array<ArrayBuffer> | undefined`\|`(text: string) => Uint8Array<ArrayBuffer>                                                                                                              | undefined` | Reads back exactly what `encodeBase64URL` writes. A padded text, a `+`, or a `/` belongs to the §4 face and is `undefined` here.                              |
+| `isBase64URL`     | function | `(value: unknown) => value is string`      | True for exactly the strings `decodeBase64URL` answers bytes for. Total on any value.                                                                               |
 
 ## The laws
 
