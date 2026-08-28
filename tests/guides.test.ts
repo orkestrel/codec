@@ -49,7 +49,12 @@ const MODULES = Object.freeze({ '@orkestrel/codec': 'src/core' })
  * than forgotten, and the assertion below fails when a name here stops being stranded, so the
  * list cannot rot.
  */
-const INTERNAL: readonly string[] = Object.freeze(['const BASE64_ALPHABET', 'const BASE64_LOOKUP'])
+const INTERNAL: readonly string[] = Object.freeze([
+	'const BASE64_ALPHABET',
+	'const BASE64_LOOKUP',
+	'const HEX_ALPHABET',
+	'const HEX_LOOKUP',
+])
 /** Root-level files this package's guides link to. `readInventory` walks directories only. */
 const ROOT_FILES = Object.freeze(['AGENTS.md'])
 

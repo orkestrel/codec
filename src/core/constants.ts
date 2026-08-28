@@ -78,3 +78,38 @@ export const BASE64_LOOKUP: Readonly<Record<string, number>> = Object.freeze({
 	'+': 62,
 	'/': 63,
 })
+
+// === RFC 4648 Base16
+//
+// The same written-out idiom, for the same reason: constants.ts holds data, and a module-scope
+// callback here is a placement violation the fleet policy sweep rejects. HEX_ALPHABET is the
+// specification's §8 table in this package's canonical lowercase spelling, entry `c` of the table
+// is the index of `c` in it, and the oracle sweep in tests/src/core/helpers.test.ts fails on any
+// single-entry disagreement. The table holds no uppercase entry, which is what makes `decodeHex`
+// refuse `'AB'`.
+
+/** The RFC 4648 §8 alphabet, lowercase and index-ordered; {@link HEX_LOOKUP} is transcribed against it. */
+export const HEX_ALPHABET = '0123456789abcdef'
+
+/**
+ * Hex character to 4-bit value lookup, transcribed against {@link HEX_ALPHABET}; the oracle sweep
+ * in tests/src/core/helpers.test.ts fails on any single-entry disagreement.
+ */
+export const HEX_LOOKUP: Readonly<Record<string, number>> = Object.freeze({
+	'0': 0,
+	'1': 1,
+	'2': 2,
+	'3': 3,
+	'4': 4,
+	'5': 5,
+	'6': 6,
+	'7': 7,
+	'8': 8,
+	'9': 9,
+	a: 10,
+	b: 11,
+	c: 12,
+	d: 13,
+	e: 14,
+	f: 15,
+})

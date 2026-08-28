@@ -3,13 +3,21 @@ import { createHostileValues, requireValue } from '@orkestrel/test'
 import {
 	decodeBase64,
 	decodeBase64URL,
+	decodeHex,
 	encodeBase64,
 	encodeBase64URL,
+	encodeHex,
 	isBase64,
 	isBase64URL,
+	isHex,
+	measureBase64,
 } from '@src/core'
 import {
 	FOREIGN,
+	HEX_MEMBERSHIP,
+	HEX_OCTETS,
+	HEX_SWEEP,
+	MEASURES,
 	MEMBERSHIP,
 	OCTETS,
 	RFC_STANDARD,
@@ -34,6 +42,7 @@ describe('the round-trip law — decoding an encoding returns the bytes', () => 
 	it('round-trips the whole octet space in one buffer', () => {
 		expect(decodeBase64(encodeBase64(OCTETS))).toStrictEqual(OCTETS)
 		expect(decodeBase64URL(encodeBase64URL(OCTETS))).toStrictEqual(OCTETS)
+		expect(decodeHex(encodeHex(OCTETS))).toStrictEqual(OCTETS)
 	})
 
 	it('round-trips every padding residue', () => {
@@ -42,6 +51,7 @@ describe('the round-trip law — decoding an encoding returns the bytes', () => 
 
 			expect(decodeBase64(encodeBase64(bytes)), `length ${length}`).toStrictEqual(bytes)
 			expect(decodeBase64URL(encodeBase64URL(bytes)), `length ${length}`).toStrictEqual(bytes)
+			expect(decodeHex(encodeHex(bytes)), `length ${length}`).toStrictEqual(bytes)
 		}
 	})
 
@@ -71,6 +81,33 @@ describe('the round-trip law — decoding an encoding returns the bytes', () => 
 		}
 		expect(drift).toEqual([])
 	})
+
+	it('round-trips the empty sequence and the empty text through the hex face', () => {
+		expect(encodeHex(new Uint8Array([]))).toBe('')
+		expect(decodeHex('')).toStrictEqual(new Uint8Array([]))
+	})
+
+	it('round-trips every single byte through the hex face', () => {
+		for (const value of OCTETS) {
+			const bytes = new Uint8Array([value])
+
+			expect(decodeHex(encodeHex(bytes)), `byte ${value}`).toStrictEqual(bytes)
+		}
+	})
+
+	it('round-trips every byte pair through the hex face', () => {
+		const drift: string[] = []
+		for (const first of OCTETS) {
+			for (const second of OCTETS) {
+				const bytes = new Uint8Array([first, second])
+				const decoded = decodeHex(encodeHex(bytes))
+				if (decoded === undefined || decoded[0] !== first || decoded[1] !== second) {
+					drift.push(`§8 ${first},${second}`)
+				}
+			}
+		}
+		expect(drift).toEqual([])
+	})
 })
 
 describe('the canonical-form law — re-encoding an admitted text returns the text', () => {
@@ -87,6 +124,23 @@ describe('the canonical-form law — re-encoding an admitted text returns the te
 		expect(
 			admittedURL.filter((text) => encodeBase64URL(requireValue(decodeBase64URL(text))) !== text),
 		).toEqual([])
+	})
+
+	it('re-encodes every admitted hex sweep text to itself', () => {
+		const admitted = HEX_SWEEP.filter((text) => isHex(text))
+
+		expect(admitted.length).toBeGreaterThan(0)
+		expect(HEX_SWEEP.length).toBeGreaterThan(admitted.length)
+		expect(admitted.filter((text) => encodeHex(requireValue(decodeHex(text))) !== text)).toEqual([])
+	})
+
+	it('refuses every uppercase spelling the hex sweep carries', () => {
+		const uppercase = HEX_SWEEP.filter(
+			(text) => text !== text.toLowerCase() && isHex(text.toLowerCase()),
+		)
+
+		expect(uppercase.length).toBeGreaterThan(0)
+		expect(uppercase.filter((text) => isHex(text))).toEqual([])
 	})
 
 	it('re-encodes every named vector to itself', () => {
@@ -108,6 +162,46 @@ describe('the iff law — each guard names exactly what its decoder accepts', ()
 			expect(isBase64URL(row.text)).toBe(row.url)
 			expect(decodeBase64(row.text) !== undefined).toBe(row.standard)
 			expect(decodeBase64URL(row.text) !== undefined).toBe(row.url)
+		})
+	}
+})
+
+describe('the iff law — isHex names exactly what decodeHex accepts', () => {
+	for (const row of HEX_MEMBERSHIP) {
+		it(`answers the declared membership for ${JSON.stringify(row.text)} — ${row.reason}`, () => {
+			const expected = row.bytes === undefined ? undefined : new Uint8Array(row.bytes)
+
+			expect(isHex(row.text)).toBe(row.bytes !== undefined)
+			expect(decodeHex(row.text)).toStrictEqual(expected)
+		})
+	}
+})
+
+describe('the measure law — a measure answers the length its decoder would allocate', () => {
+	// Two independent walks over the same §4 grammar: `measureBase64` computes the length from the
+	// text and `decodeBase64` reports the length of bytes it actually wrote. Neither asks the other,
+	// so a grammar rule one of them stops enforcing shows up here as a disagreement.
+	it('agrees with decodeBase64 on every sweep text', () => {
+		const texts = [...SWEEP, ...MEMBERSHIP.map((row) => row.text)]
+		const drift = texts.filter((text) => measureBase64(text) !== decodeBase64(text)?.length)
+
+		expect(texts.length).toBeGreaterThan(0)
+		expect(drift).toEqual([])
+	})
+
+	it('agrees with decodeBase64 on every canonical encoding of a byte prefix', () => {
+		const drift: string[] = []
+		for (let length = 0; length <= OCTETS.length; length += 1) {
+			const text = encodeBase64(OCTETS.slice(0, length))
+			if (measureBase64(text) !== length) drift.push(`length ${length}`)
+		}
+		expect(drift).toEqual([])
+	})
+
+	for (const row of MEASURES) {
+		it(`measures ${JSON.stringify(row.text)} — ${row.reason}`, () => {
+			expect(measureBase64(row.text)).toBe(row.length)
+			expect(measureBase64(row.text)).toBe(decodeBase64(row.text)?.length)
 		})
 	}
 })
@@ -146,6 +240,22 @@ describe('the alphabets', () => {
 		}
 	})
 
+	// The hex oracle is the language's own radix conversion, which knows nothing about HEX_LOOKUP,
+	// so a table entry that drifts from the specification disagrees with it in both directions.
+	it('spells every octet the way the radix oracle spells it', () => {
+		for (const value of OCTETS) {
+			expect(encodeHex(new Uint8Array([value])), `byte ${value}`).toBe(HEX_OCTETS[value])
+		}
+	})
+
+	it('reads every oracle spelling back to its octet', () => {
+		for (const value of OCTETS) {
+			expect(decodeHex(requireValue(HEX_OCTETS[value])), `byte ${value}`).toStrictEqual(
+				new Uint8Array([value]),
+			)
+		}
+	})
+
 	it('refuses each face the characters the other one owns', () => {
 		expect(decodeBase64('-_-_')).toBeUndefined()
 		expect(decodeBase64URL('+/+/')).toBeUndefined()
@@ -159,6 +269,7 @@ describe('guard totality', () => {
 		for (const [index, value] of FOREIGN.entries()) {
 			expect(isBase64(value), `foreign value ${index}`).toBe(false)
 			expect(isBase64URL(value), `foreign value ${index}`).toBe(false)
+			expect(isHex(value), `foreign value ${index}`).toBe(false)
 		}
 	})
 
@@ -166,13 +277,16 @@ describe('guard totality', () => {
 		for (const [index, value] of createHostileValues().entries()) {
 			let standard: boolean | undefined
 			let url: boolean | undefined
+			let hex: boolean | undefined
 
 			expect(() => {
 				standard = isBase64(value)
 				url = isBase64URL(value)
+				hex = isHex(value)
 			}, `hostile value ${index}`).not.toThrow()
 			expect(standard, `hostile value ${index}`).toBe(false)
 			expect(url, `hostile value ${index}`).toBe(false)
+			expect(hex, `hostile value ${index}`).toBe(false)
 		}
 	})
 })

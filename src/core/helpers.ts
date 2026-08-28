@@ -1,4 +1,4 @@
-import { BASE64_ALPHABET, BASE64_LOOKUP } from './constants.js'
+import { BASE64_ALPHABET, BASE64_LOOKUP, HEX_ALPHABET, HEX_LOOKUP } from './constants.js'
 
 // === The RFC 4648 codings
 //
@@ -7,8 +7,11 @@ import { BASE64_ALPHABET, BASE64_LOOKUP } from './constants.js'
 // character outside BASE64_LOOKUP, a length off the boundary, padding anywhere but the end, and a
 // non-zero unused trailing bit. The §5 face is that same grammar under a two-character
 // substitution with the padding removed, so `encodeBase64URL` substitutes into the §4 output and
-// `decodeBase64URL` substitutes back and refuses the §4 characters before delegating. Each guard
-// answers exactly what its own decoder accepts, by asking it, so the two cannot drift.
+// `decodeBase64URL` substitutes back and refuses the §4 characters before delegating. The §8 face
+// is a two-digit table walk with no padding and no unused bit to check, so its only refusals are
+// an odd length and a character outside HEX_LOOKUP — uppercase included, because HEX_LOOKUP holds
+// the lowercase spelling alone. Each guard answers exactly what its own decoder accepts, by asking
+// it, so the two cannot drift.
 
 /**
  * Encodes a byte sequence as standard padded Base64.
@@ -124,4 +127,105 @@ export function decodeBase64URL(text: string): Uint8Array<ArrayBuffer> | undefin
 	const standard = text.replaceAll('-', '+').replaceAll('_', '/')
 	const remainder = standard.length % 4
 	return decodeBase64(remainder === 0 ? standard : standard + '='.repeat(4 - remainder))
+}
+
+/**
+ * Encodes a byte sequence as lowercase hex.
+ *
+ * @remarks
+ * Emits the RFC 4648 §8 base16 coding, two digits per byte — the canonical spelling of these bytes
+ * and the only form {@link decodeHex} accepts. The specification's §8 table spells the alphabet
+ * uppercase; this package spells it lowercase, a deliberate departure matching every producer the
+ * fleet already reads, and one canonical spelling per input is what forces a single choice. Total:
+ * encoding cannot fail.
+ *
+ * @param bytes - The bytes to encode.
+ * @returns The canonical lowercase hex text.
+ *
+ * @example
+ * ```ts
+ * encodeHex(new Uint8Array([0xab])) // 'ab'
+ * ```
+ */
+export function encodeHex(bytes: Uint8Array): string {
+	let text = ''
+	for (const byte of bytes) {
+		text += HEX_ALPHABET.charAt((byte >> 4) & 0x0f)
+		text += HEX_ALPHABET.charAt(byte & 0x0f)
+	}
+	return text
+}
+
+/**
+ * Decodes canonical lowercase hex text into its bytes.
+ *
+ * @remarks
+ * Accepts only the RFC 4648 §8 form {@link encodeHex} produces: lowercase digits, two per byte, and
+ * nothing else. `'AB'` re-encodes as `'ab'`, so admitting it would break the canonical-form law;
+ * an odd length, a `0x` prefix, whitespace, and any character outside the alphabet are refused for
+ * the same reason. `undefined` is the only failure mode; nothing here throws.
+ *
+ * @param text - The text to decode.
+ * @returns The decoded bytes, or `undefined` when `text` is not canonical lowercase hex.
+ *
+ * @example
+ * ```ts
+ * decodeHex('ab') // Uint8Array [171]
+ * decodeHex('AB') // undefined
+ * ```
+ */
+export function decodeHex(text: string): Uint8Array<ArrayBuffer> | undefined {
+	if (text.length % 2 !== 0) return undefined
+	const bytes = new Uint8Array(text.length / 2)
+	for (let index = 0; index < text.length; index += 2) {
+		const high = HEX_LOOKUP[text.charAt(index)]
+		const low = HEX_LOOKUP[text.charAt(index + 1)]
+		if (high === undefined || low === undefined) return undefined
+		bytes[index / 2] = (high << 4) | low
+	}
+	return bytes
+}
+
+// === The measures
+//
+// A measure answers the decoded length of a text its coding admits, and `undefined` for a text the
+// coding refuses. It walks the same grammar its decoder does and allocates no output buffer, which
+// is the whole reason it exists: a measure that decodes has measured nothing. `measureBase64`
+// therefore repeats the §4 walk rather than calling `decodeBase64`, and the law sweep in
+// tests/src/core/helpers.test.ts holds the two independent walks against each other.
+
+/**
+ * Measures the byte length canonical standard Base64 text decodes to.
+ *
+ * @remarks
+ * Keeps the sound triple `measureBase64(text) === decodeBase64(text)?.length` for every string,
+ * walking the full RFC 4648 §4 grammar — the length residue, the padding placement, the alphabet
+ * membership, and the unused trailing bits — without allocating the decoded bytes. That is its
+ * reason to exist, so it repeats the walk rather than asking {@link decodeBase64}. `undefined` is
+ * the only failure mode; nothing here throws.
+ *
+ * @param text - The text to measure.
+ * @returns The decoded byte length, or `undefined` when `text` is not canonical §4 Base64.
+ *
+ * @example
+ * ```ts
+ * measureBase64('aGk=') // 2
+ * measureBase64('aa==') // undefined
+ * ```
+ */
+export function measureBase64(text: string): number | undefined {
+	if (text.length % 4 !== 0) return undefined
+	const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0
+	for (let index = 0; index < text.length; index += 4) {
+		const tail = text.length - index === 4 ? padding : 0
+		const first = BASE64_LOOKUP[text.charAt(index)]
+		const second = BASE64_LOOKUP[text.charAt(index + 1)]
+		const third = tail === 2 ? 0 : BASE64_LOOKUP[text.charAt(index + 2)]
+		const fourth = tail === 0 ? BASE64_LOOKUP[text.charAt(index + 3)] : 0
+		if (first === undefined || second === undefined) return undefined
+		if (third === undefined || fourth === undefined) return undefined
+		if (tail === 2 && (second & 0x0f) !== 0) return undefined
+		if (tail === 1 && (third & 0x03) !== 0) return undefined
+	}
+	return (text.length / 4) * 3 - padding
 }

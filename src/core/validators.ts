@@ -1,4 +1,4 @@
-import { decodeBase64, decodeBase64URL } from './helpers.js'
+import { decodeBase64, decodeBase64URL, decodeHex } from './helpers.js'
 
 /**
  * Checks whether a value is canonical standard Base64 text.
@@ -38,4 +38,25 @@ export function isBase64(value: unknown): value is string {
  */
 export function isBase64URL(value: unknown): value is string {
 	return typeof value === 'string' && decodeBase64URL(value) !== undefined
+}
+
+/**
+ * Checks whether a value is canonical lowercase hex text.
+ *
+ * @remarks
+ * True for exactly the strings {@link decodeHex} answers bytes for, because it asks that decoder.
+ * An uppercase digit, an odd length, and a `0x` prefix are false. Total on any value: a number,
+ * `null`, or a byte sequence is false rather than a throw.
+ *
+ * @param value - The value to test.
+ * @returns True if `value` is canonical §8 lowercase hex text; false otherwise.
+ *
+ * @example
+ * ```ts
+ * isHex('ab') // true
+ * isHex('AB') // false
+ * ```
+ */
+export function isHex(value: unknown): value is string {
+	return typeof value === 'string' && decodeHex(value) !== undefined
 }

@@ -1,8 +1,9 @@
 # Codec
 
 > The fleet's byte-to-text codings, as sound `encode` / `decode` / guard triples over `string` and
-> `Uint8Array` — RFC 4648 Base64 and base64url today. Zero runtime dependencies, no error type, no
-> options, no class. Source: [`src/core`](../src/core). Published through `@orkestrel/codec`.
+> `Uint8Array` — RFC 4648 Base64, base64url, and hex — beside a `measure*` that reads a decoded
+> length off the text without decoding it. Zero runtime dependencies, no error type, no options, no
+> class. Source: [`src/core`](../src/core). Published through `@orkestrel/codec`.
 
 A coding is a spec-named, stateless mapping with one canonical spelling per input, written as an
 `encode*` that produces only the canonical form, a `decode*` that accepts exactly that form and
@@ -15,27 +16,46 @@ values into a store, or read JSON.
 
 The families are fixed. `encode*` takes bytes and returns the canonical text, and cannot fail.
 `decode*` takes text and returns bytes or `undefined`, and never throws. `is*` takes an `unknown`
-and narrows it to `string`, and never throws. A face's guard and its decoder are one grammar: the
-guard answers by asking the decoder, so the set the guard names and the set the decoder accepts
-cannot drift apart.
+and narrows it to `string`, and never throws. `measure*` takes text and returns the byte length its
+decoder would produce, or `undefined` for a text that decoder refuses — the name
+`@orkestrel/websocket` already carries for `measureWebSocketFrame`, which reads a frame's declared
+payload length off the buffer without buffering the payload.
+
+A face's guard and its decoder are one grammar: the guard answers by asking the decoder, so the set
+the guard names and the set the decoder accepts cannot drift apart. A measure is the one family
+that cannot ask. Its reason to exist is that it never allocates the bytes, so it walks the grammar
+itself and the suite holds the two walks against each other — a measure that decodes has measured
+nothing.
 
 ## Surface
 
 ### Codings
 
 The RFC 4648 faces: the codings from [`helpers.ts`](../src/core/helpers.ts) and the guards from
-[`validators.ts`](../src/core/validators.ts). `Base64` names the §4 coding and `Base64URL` the §5
-one; the alphabets and the reverse lookup behind them are module data, not public API, because
-publishing an alphabet invites hand-rolling the coding it belongs to.
+[`validators.ts`](../src/core/validators.ts). `Base64` names the §4 coding, `Base64URL` the §5 one,
+and `Hex` the §8 one; the alphabets and the reverse lookups behind them are module data, not public
+API, because publishing an alphabet invites hand-rolling the coding it belongs to.
 
-| Name              | Kind     | Signature                                  | Behavior                                                                                                                                                            |
-| ----------------- | -------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `encodeBase64`    | function | `(bytes: Uint8Array) => string`            | Spells `bytes` in the RFC 4648 §4 alphabet (`+`, `/`) with `=` padding — the canonical form, and the only form `decodeBase64` accepts. Total: encoding cannot fail. |
-| `decodeBase64`    | function | `(text: string) => Uint8Array<ArrayBuffer> | undefined`\|`(text: string) => Uint8Array<ArrayBuffer>                                                                                                              | undefined` | Reads back exactly what `encodeBase64` writes. Every other text — wrong alphabet, whitespace, wrong padding, a non-zero unused trailing bit — is `undefined`. |
-| `isBase64`        | function | `(value: unknown) => value is string`      | True for exactly the strings `decodeBase64` answers bytes for. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.               |
-| `encodeBase64URL` | function | `(bytes: Uint8Array) => string`            | Spells `bytes` in the RFC 4648 §5 url alphabet (`-`, `_`) with the padding removed — the canonical form, and the only form `decodeBase64URL` accepts. Total.        |
-| `decodeBase64URL` | function | `(text: string) => Uint8Array<ArrayBuffer> | undefined`\|`(text: string) => Uint8Array<ArrayBuffer>                                                                                                              | undefined` | Reads back exactly what `encodeBase64URL` writes. A padded text, a `+`, or a `/` belongs to the §4 face and is `undefined` here.                              |
-| `isBase64URL`     | function | `(value: unknown) => value is string`      | True for exactly the strings `decodeBase64URL` answers bytes for. Total on any value.                                                                               |
+| Name              | Kind     | Signature                                                | Behavior                                                                                                                                                             |
+| ----------------- | -------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `encodeBase64`    | function | `(bytes: Uint8Array) => string`                          | Spells `bytes` in the RFC 4648 §4 alphabet (`+`, `/`) with `=` padding — the canonical form, and the only form `decodeBase64` accepts. Total: encoding cannot fail.  |
+| `decodeBase64`    | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Reads back exactly what `encodeBase64` writes. Every other text — wrong alphabet, whitespace, wrong padding, a non-zero unused trailing bit — is `undefined`.        |
+| `isBase64`        | function | `(value: unknown) => value is string`                    | True for exactly the strings `decodeBase64` answers bytes for. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.                |
+| `encodeBase64URL` | function | `(bytes: Uint8Array) => string`                          | Spells `bytes` in the RFC 4648 §5 url alphabet (`-`, `_`) with the padding removed — the canonical form, and the only form `decodeBase64URL` accepts. Total.         |
+| `decodeBase64URL` | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Reads back exactly what `encodeBase64URL` writes. A padded text, a `+`, or a `/` belongs to the §4 face and is `undefined` here.                                     |
+| `isBase64URL`     | function | `(value: unknown) => value is string`                    | True for exactly the strings `decodeBase64URL` answers bytes for. Total on any value.                                                                                |
+| `encodeHex`       | function | `(bytes: Uint8Array) => string`                          | Spells `bytes` in the RFC 4648 §8 alphabet, lowercase, two digits per byte — the canonical form, and the only form `decodeHex` accepts. Total: encoding cannot fail. |
+| `decodeHex`       | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Reads back exactly what `encodeHex` writes. An uppercase digit, an odd length, a `0x` prefix, whitespace, and any foreign character are `undefined`.                 |
+| `isHex`           | function | `(value: unknown) => value is string`                    | True for exactly the strings `decodeHex` answers bytes for. Total on any value.                                                                                      |
+
+### Measures
+
+The decoded length a §4 text carries, read off the text itself — from
+[`helpers.ts`](../src/core/helpers.ts), beside the coding it measures.
+
+| Name            | Kind     | Signature                               | Behavior                                                                                                                                          |
+| --------------- | -------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `measureBase64` | function | `(text: string) => number \| undefined` | The byte length `decodeBase64` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeBase64` refuses. |
 
 ## The laws
 
@@ -46,6 +66,13 @@ empty one included.
 
 **The canonical-form law.** `encode*(decode*(text)) === text`, for every text the face's guard
 admits.
+
+A measure keeps one law, over every string rather than over the admitted ones alone.
+
+**The sound-triple law.** `measure*(text) === decode*(text)?.length`. An admitted text pins the
+length; a refused text pins `undefined` on both sides. The suite drives it across the Base64 sweep
+population, the membership rows, the measure rows, and the octet-prefix encodings, so a divergence
+between the two walks reddens on the texts those populations reach.
 
 The canonical-form law is the one that does the work. It says a decoder may accept only the
 spelling its own encoder produces, which rules out every lenient door at once: the wrong alphabet
@@ -58,6 +85,18 @@ the sextet the padding discards, so `decodeBase64('aa==')` is `undefined` and `i
 false. `'aQ=='` is the canonical spelling of the byte `'aa=='` was reaching for, and it decodes.
 The url face refuses `'aa'` for the same reason, and admits `'aQ'`.
 
+The §8 face has fewer doors to close and closes them the same way. Hex carries no padding and no
+unused trailing bit, so an odd length and a character outside the alphabet are the whole refusal
+set — and uppercase is one of those characters. RFC 4648 §8 prints its table uppercase; this
+package's canonical spelling is lowercase. That is a deliberate departure, and the canonical-form
+law is what forces a choice at all: one spelling per input, so the package picks the one the fleet
+already produces — `bytesToHex` in `@orkestrel/scaffold`, the digest hex in `@orkestrel/mcp`, and
+Node's own `digest('hex')`. So `decodeHex('AB')` is `undefined` and `isHex('AB')` is false, by the
+argument that refuses `'aa=='`: `'AB'` re-encodes as `'ab'`, so admitting it would break the law.
+`'ab'` is the spelling that decodes. `'0xab'` is `undefined` because the prefix is a notation
+around the coding rather than part of it, and `'abc'` is `undefined` because a byte takes two
+digits.
+
 ## Membership
 
 A coding belongs here when it is:
@@ -69,6 +108,11 @@ A coding belongs here when it is:
   `is*` can name it;
 - **both-lawed** — the round-trip law and the canonical-form law hold as written;
 - **wanted** — a real consumer in the fleet needs it now.
+
+A measure belongs here when the coding it measures is already here, the sound-triple law holds as
+written, and a consumer needs the length before the bytes. It names no grammar of its own, so it
+ships beside its coding rather than as a face. `measureBase64` meets that bar; the §5 and §8
+measures wait on the consumer the bar asks for.
 
 A transform that carries state between calls, that takes a parameter changing what it produces,
 that reads a document grammar rather than a byte-to-text mapping, or that encodes a caller's policy
@@ -83,9 +127,8 @@ of this package.
   no option to relax any of it.
 - **No error type.** A decoder reports failure as `undefined` and a guard reports it as `false`.
   Nothing here throws, so there is nothing to catch and no code to branch on.
-- **Not yet, and behind the bar:** UTF-8 text codings, hex, charset decoders, and `measure*`
-  size predictions. Each is a candidate for a later wave, and each has to meet the membership bar
-  with a real consumer before it lands.
+- **Not yet, and behind the bar:** UTF-8 text codings and charset decoders. Each is a candidate for
+  a later wave, and each has to meet the membership bar with a real consumer before it lands.
 - **Never:** compression, stream framing, document escaping, value-to-store mapping, and JSON.
   Those are other packages' work.
 
@@ -160,12 +203,19 @@ if (decoded !== undefined) encodeBase64(decoded) // === text
 
 ## Tests
 
-- [`tests/src/core/helpers.test.ts`](../tests/src/core/helpers.test.ts) — both laws as sweeps: the
-  whole octet space in one buffer, every padding residue, every single byte and every byte pair,
-  and an exhaustive walk over short texts spanning both alphabets that re-encodes every admitted
-  text to itself; the written-out membership rows that bind each guard to its decoder; the named
-  vectors; the canonical refusals; the alphabets read against the specification in both
-  directions; and guard totality against hostile values.
+- [`tests/src/core/helpers.test.ts`](../tests/src/core/helpers.test.ts) — every law as a sweep. The
+  round-trip law runs the whole octet space in one buffer, every padding residue, every single
+  byte, and every byte pair on the §4 and §5 faces; the §8 face runs the same one-buffer sweep and
+  residue prefixes beside its empty, single-byte, and byte-pair walks. The canonical-form law runs an
+  exhaustive walk over short texts spanning the Base64 alphabets and a second walk over short hex
+  texts carrying uppercase and foreign characters, re-encoding every admitted text to itself. The
+  sound-triple law runs `measureBase64` against `decodeBase64` over the Base64 sweep population,
+  every Base64 membership row, and every canonical encoding of an octet prefix. Beside the sweeps
+  sit the written-out membership rows that bind each guard to its decoder, the hex rows that pin
+  `isHex` and `decodeHex` to the same answer, the named vectors, the named measures, the canonical
+  refusals, the Base64 alphabets read against the specification in both directions, the hex
+  alphabet read against the language's own radix conversion in both directions, and guard totality
+  against hostile values.
 - [`tests/policy.test.ts`](../tests/policy.test.ts) — repository coding law: source placement,
   exports, and syntax.
 - [`tests/config.test.ts`](../tests/config.test.ts) — the root configuration's aliases, projects,
