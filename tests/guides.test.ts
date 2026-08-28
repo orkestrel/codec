@@ -26,10 +26,25 @@ import { readInventory } from '@orkestrel/test/server'
 import {
 	decodeBase64,
 	decodeBase64URL,
+	decodeHex,
+	decodeLatin1,
+	decodeUTF8,
+	decodeUTF16LE,
+	decodeWindows1252,
 	encodeBase64,
 	encodeBase64URL,
+	encodeHex,
+	encodeLatin1,
+	encodeUTF8,
+	encodeUTF16LE,
+	encodeWindows1252,
 	isBase64,
 	isBase64URL,
+	isHex,
+	measureBase64,
+	measureBase64URL,
+	measureHex,
+	measureUTF8,
 } from '@src/core'
 
 /** Every fence language this package's guides are allowed to use. */
@@ -283,6 +298,50 @@ describe('flagship fences', () => {
 		expect(encodeBase64(requireValue(decodeBase64(text)))).toBe(text)
 	})
 
+	it('reads the hex face', () => {
+		expect(encodeHex(new Uint8Array([0xab]))).toBe('ab')
+		expect(decodeHex('ab')).toStrictEqual(new Uint8Array([171]))
+		expect(decodeHex('AB')).toBeUndefined()
+		expect(decodeHex('0xab')).toBeUndefined()
+		expect(decodeHex('abc')).toBeUndefined()
+		expect(isHex('ab')).toBe(true)
+		expect(isHex('AB')).toBe(false)
+	})
+
+	it('encodes and decodes through a charset', () => {
+		expect(encodeUTF8('hi')).toStrictEqual(new Uint8Array([104, 105]))
+		expect(decodeUTF8(new Uint8Array([104, 105]))).toBe('hi')
+		expect(encodeUTF8('\ud800')).toBeUndefined()
+		expect(decodeUTF8(new Uint8Array([0xc0, 0x80]))).toBeUndefined()
+		expect(decodeUTF8(new Uint8Array([0xef, 0xbb, 0xbf]))).toBe('\ufeff')
+
+		expect(encodeLatin1('é')).toStrictEqual(new Uint8Array([233]))
+		expect(decodeLatin1(new Uint8Array([0x80]))).toBe('\u0080')
+		expect(encodeLatin1('Ā')).toBeUndefined()
+
+		expect(encodeWindows1252('€')).toStrictEqual(new Uint8Array([128]))
+		expect(decodeWindows1252(new Uint8Array([0x80]))).toBe('€')
+		expect(decodeWindows1252(new Uint8Array([0x81]))).toBeUndefined()
+
+		expect(encodeUTF16LE('hi')).toStrictEqual(new Uint8Array([104, 0, 105, 0]))
+		expect(decodeUTF16LE(new Uint8Array([0x68]))).toBeUndefined()
+		expect(decodeUTF16LE(new Uint8Array([0x00, 0xd8]))).toBeUndefined()
+	})
+
+	it('measures without producing the bytes', () => {
+		expect(measureBase64('aGk=')).toBe(2)
+		expect(measureBase64('aa==')).toBeUndefined()
+		expect(measureBase64URL('aGk')).toBe(2)
+		expect(measureBase64URL('aGk=')).toBeUndefined()
+		expect(measureHex('abcd')).toBe(2)
+		expect(measureHex('AB')).toBeUndefined()
+
+		expect(measureUTF8('hi')).toBe(2)
+		expect(measureUTF8('é')).toBe(2)
+		expect(measureUTF8('€')).toBe(3)
+		expect(measureUTF8('\u{10000}')).toBe(4)
+		expect(measureUTF8('\ud800')).toBeUndefined()
+	})
 	// The canonical-form ruling the guide states in prose. A sentence about behaviour passes every
 	// parity assertion whether or not it is true, so the sentence is bound here and then driven:
 	// the refused text, its canonical neighbour, and the same pair on the url face.

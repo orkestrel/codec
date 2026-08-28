@@ -2,8 +2,8 @@
 
 > The fleet's byte-to-text codings, as sound `encode` / `decode` / guard triples over `string` and
 > `Uint8Array` — RFC 4648 Base64, base64url, and hex, beside the UTF-8, ISO-8859-1, Windows-1252,
-> and UTF-16LE charsets — and a `measure*` that reads a decoded length off the text without decoding
-> it. Zero runtime dependencies, no error type, no options, no class. Source:
+> and UTF-16LE charsets — and a `measure*` that answers a coding's byte-side size question without
+> producing those bytes. Zero runtime dependencies, no error type, no options, no class. Source:
 > [`src/core`](src/core). Published through `@orkestrel/codec`.
 
 | Name               | Kind     | Signature                                                | Behavior                                                                                                                                                             |
@@ -20,6 +20,7 @@
 | `measureBase64`    | function | `(text: string) => number \| undefined`                  | The byte length `decodeBase64` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeBase64` refuses.                    |
 | `measureBase64URL` | function | `(text: string) => number \| undefined`                  | The byte length `decodeBase64URL` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeBase64URL` refuses.              |
 | `measureHex`       | function | `(text: string) => number \| undefined`                  | The byte length `decodeHex` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeHex` refuses.                          |
+| `measureUTF8`      | function | `(text: string) => number \| undefined`                  | The UTF-8 byte length `encodeUTF8` would write for `text`, without allocating those bytes; `undefined` for exactly the ill-formed strings `encodeUTF8` refuses.      |
 
 A charset's wire form is bytes rather than text, so its `encode*` takes a string and its `decode*`
 takes bytes. The two laws are unchanged; only the direction each is written in inverts.
@@ -45,8 +46,17 @@ admits, the empty one included.
 **The canonical-form law.** `encode*(decode*(wire))` returns `wire`, for every wire form the face's
 guard admits.
 
-**The sound-triple law.** `measure*(text) === decode*(text)?.length`, for every string — the
-admitted texts pinning a length, the refused ones pinning `undefined` on both sides.
+**The sound-triple law.** A measure equals the length of the bytes the function producing them
+would return, for every string — the admitted texts pinning a length, the refused ones pinning
+`undefined` on both sides. The producer is the decoder where the wire form is text, so
+`measureBase64(text) === decodeBase64(text)?.length`, and the encoder where the wire form is bytes,
+so `measureUTF8(text) === encodeUTF8(text)?.length`.
+
+`computeBytes` in `@orkestrel/scaffold` counts UTF-8 bytes too, and it answers a different question
+for a lone surrogate: the three bytes `TextEncoder` writes for the replacement character, where
+`measureUTF8` answers `undefined`. That divergence is deliberate — it is the strict door this
+package keeps on every face — and a consumer wanting the replacement count calls the counter that
+produces it.
 
 RFC 4648 §8 prints its table uppercase; this package's canonical spelling is lowercase, matching
 every producer the fleet already reads. One canonical spelling per input is the charter's law, so

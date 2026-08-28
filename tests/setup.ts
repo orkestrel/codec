@@ -1,3 +1,5 @@
+import { encodeBase64, encodeBase64URL, encodeHex } from '@src/core'
+
 /** The RFC 4648 §4 alphabet, transcribed from the specification. */
 export const RFC_STANDARD = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 /** The RFC 4648 §5 url alphabet, transcribed from the specification. */
@@ -227,18 +229,82 @@ for (let index = 0; index < SWEEP_CHARACTERS.length ** 4; index += 1) {
 /** The sweep population, deduplicated. */
 export const SWEEP: readonly string[] = [...SWEEP_TEXTS]
 
-/** Every text the Base64 measure law sweeps: the sweep population beside both written-out tables. */
+// ── The measure mutant population ────────────────────────────────────────────
+//
+// The sweep populations reach four characters, so every refused text a measure meets there is short
+// enough that a grammar walk and a length arithmetic agree by accident. The mutants are longer: each
+// one is a canonical encoding of an octet prefix carrying exactly one substitution, insertion, or
+// truncation, so a refusal lands deep inside a text whose prefix is admissible.
+//
+// The generator is a written-out xorshift32 over a constant seed rather than `Math.random`, so the
+// population is identical on every host and every run. The draws are produced first and consumed
+// second, which keeps the state advance in one place.
+
+/** The characters a mutant can carry: both Base64 alphabets, the pad, uppercase hex, and foreigners. */
+const MUTANT_CHARACTERS = 'AQaqBh09fF+/-_= \n*x'
+/** The longest octet prefix the mutant bases encode. */
+const MUTANT_PREFIX = 24
+/** The mutants drawn per base encoding. */
+const MUTANT_ROUNDS = 8
+/** The xorshift32 seed, constant so the population never moves. */
+const MUTANT_SEED = 0x1252c0de
+
+// The draws per mutant are the mutation kind, the position, and the character, over every base.
+const MUTANT_DRAWS: number[] = []
+let mutantState = MUTANT_SEED
+for (let index = 0; index < MUTANT_PREFIX * 3 * MUTANT_ROUNDS * 3; index += 1) {
+	mutantState ^= mutantState << 13
+	mutantState ^= mutantState >>> 17
+	mutantState ^= mutantState << 5
+	mutantState >>>= 0
+	MUTANT_DRAWS.push(mutantState)
+}
+
+const MUTANT_SET = new Set<string>()
+let mutantCursor = 0
+for (let length = 1; length <= MUTANT_PREFIX; length += 1) {
+	const bytes = OCTETS.slice(0, length)
+	for (const base of [encodeBase64(bytes), encodeBase64URL(bytes), encodeHex(bytes)]) {
+		MUTANT_SET.add(base)
+		for (let round = 0; round < MUTANT_ROUNDS; round += 1) {
+			const kind = (MUTANT_DRAWS[mutantCursor] ?? 0) % 3
+			const position = (MUTANT_DRAWS[mutantCursor + 1] ?? 0) % base.length
+			const character = MUTANT_CHARACTERS.charAt(
+				(MUTANT_DRAWS[mutantCursor + 2] ?? 0) % MUTANT_CHARACTERS.length,
+			)
+			mutantCursor += 3
+			if (kind === 0) MUTANT_SET.add(base.slice(0, position) + character + base.slice(position + 1))
+			else if (kind === 1) {
+				MUTANT_SET.add(base.slice(0, position) + character + base.slice(position))
+			} else MUTANT_SET.add(base.slice(0, position))
+		}
+	}
+}
+
+/**
+ * The deterministic mutant population: canonical encodings of octet prefixes, each also carried
+ * under one substitution, insertion, or truncation.
+ *
+ * Every measure sweeps every mutant, whichever face produced the base. The sound-triple law holds
+ * over every string rather than over one face's own texts, so a §4 mutant is a refused hex text and
+ * a hex mutant is a refused §5 text, and each measure owes `undefined` on both walks for it.
+ */
+export const MEASURE_MUTANTS: readonly string[] = [...MUTANT_SET]
+
+/** Every text the Base64 measure law sweeps: the sweep population, both tables, and the mutants. */
 export const MEASURE_TEXTS: readonly string[] = [
 	...SWEEP,
 	...MEMBERSHIP.map((row) => row.text),
 	...MEASURES.map((row) => row.text),
+	...MEASURE_MUTANTS,
 ]
 
-/** Every text the hex measure law sweeps: the hex sweep population beside both written-out tables. */
+/** Every text the hex measure law sweeps: the hex sweep population, both tables, and the mutants. */
 export const HEX_MEASURE_TEXTS: readonly string[] = [
 	...HEX_SWEEP,
 	...HEX_MEMBERSHIP.map((row) => row.text),
 	...HEX_MEASURES.map((row) => row.text),
+	...MEASURE_MUTANTS,
 ]
 
 // ── The charset oracles ──────────────────────────────────────────────────────
@@ -326,6 +392,51 @@ export const WINDOWS_1252_UNDEFINED: readonly number[] = Object.freeze([
 	0x81, 0x8d, 0x8f, 0x90, 0x9d,
 ])
 
+/**
+ * The published Windows-1252 high band, hand-transcribed here from the code page's own table.
+ *
+ * This is the second mechanism for `WINDOWS_1252_HIGH` in `src/core/constants.ts`, the way
+ * {@link RFC_STANDARD} is the second mechanism for the Base64 alphabet. The platform oracle cannot
+ * play that part alone: the WHATWG index defines all 256 slots, so it is silent on exactly the
+ * omissions that make this code page what it is. Transcribe an entry here from the published table
+ * and never from the source table — a copy of the source proves the source agrees with itself.
+ *
+ * Each value is the character rather than its code point, so the two tables disagree in shape as
+ * well as in provenance and a digit transposed in either one reddens the comparison. The comment
+ * beside each entry is the character's Unicode name, which is what a reader audits the glyph
+ * against. The slots 0x81, 0x8D, 0x8F, 0x90, and 0x9D carry no entry, because the code page defines
+ * none.
+ */
+export const WINDOWS_1252_INDEX: Readonly<Record<string, string>> = Object.freeze({
+	0x80: '€', // EURO SIGN
+	0x82: '‚', // SINGLE LOW-9 QUOTATION MARK
+	0x83: 'ƒ', // LATIN SMALL LETTER F WITH HOOK
+	0x84: '„', // DOUBLE LOW-9 QUOTATION MARK
+	0x85: '…', // HORIZONTAL ELLIPSIS
+	0x86: '†', // DAGGER
+	0x87: '‡', // DOUBLE DAGGER
+	0x88: 'ˆ', // MODIFIER LETTER CIRCUMFLEX ACCENT
+	0x89: '‰', // PER MILLE SIGN
+	0x8a: 'Š', // LATIN CAPITAL LETTER S WITH CARON
+	0x8b: '‹', // SINGLE LEFT-POINTING ANGLE QUOTATION MARK
+	0x8c: 'Œ', // LATIN CAPITAL LIGATURE OE
+	0x8e: 'Ž', // LATIN CAPITAL LETTER Z WITH CARON
+	0x91: '‘', // LEFT SINGLE QUOTATION MARK
+	0x92: '’', // RIGHT SINGLE QUOTATION MARK
+	0x93: '“', // LEFT DOUBLE QUOTATION MARK
+	0x94: '”', // RIGHT DOUBLE QUOTATION MARK
+	0x95: '•', // BULLET
+	0x96: '–', // EN DASH
+	0x97: '—', // EM DASH
+	0x98: '˜', // SMALL TILDE
+	0x99: '™', // TRADE MARK SIGN
+	0x9a: 'š', // LATIN SMALL LETTER S WITH CARON
+	0x9b: '›', // SINGLE RIGHT-POINTING ANGLE QUOTATION MARK
+	0x9c: 'œ', // LATIN SMALL LIGATURE OE
+	0x9e: 'ž', // LATIN SMALL LETTER Z WITH CARON
+	0x9f: 'Ÿ', // LATIN CAPITAL LETTER Y WITH DIAERESIS
+})
+
 // ── The charset populations ──────────────────────────────────────────────────
 
 /**
@@ -335,7 +446,9 @@ export const WINDOWS_1252_UNDEFINED: readonly number[] = Object.freeze([
  * U+07FF, U+0800, U+FFFF, U+10000, and U+10FFFF — so a width rule that shifts by one lands on a
  * member here. U+FEFF is the BOM, carried as an ordinary character. U+0081 is a Windows-1252
  * undefined slot on the text side, U+20AC is a defined high slot, and U+00FF and U+0100 straddle
- * the Latin-1 ceiling.
+ * the Latin-1 ceiling. U+D7FF and U+E000 straddle the surrogate range: each is a well-formed
+ * character one code point outside it, so a range check written with the wrong comparison refuses a
+ * member here rather than passing on a population that never approaches the boundary.
  */
 export const TEXT_CHARACTERS: readonly string[] = [
 	'\u0000',
@@ -348,6 +461,8 @@ export const TEXT_CHARACTERS: readonly string[] = [
 	'\u07ff',
 	'\u0800',
 	'€',
+	'\ud7ff',
+	'\ue000',
 	'\ufeff',
 	'\uffff',
 	'\u{10000}',
@@ -381,7 +496,15 @@ export const ILL_FORMED: ReadonlyArray<{ readonly text: string; readonly reason:
 	{ text: '\ud800\ud800', reason: 'two lead surrogates' },
 ]
 
-/** The UTF-8 width thresholds, each with the byte length its code point encodes to. */
+/**
+ * The UTF-8 width thresholds and the surrogate-range outer boundaries, each with the byte length
+ * its code point encodes to.
+ *
+ * The thresholds are where the encoded width changes, so a width rule off by one lands on a row
+ * here. U+D7FF and U+E000 are not thresholds: they sit one code point on either side of the
+ * surrogate range, so the per-position mutation sweep driven from this table reaches the encoded
+ * surrogates from a canonical neighbour rather than from a written-out refusal row.
+ */
 export const UTF8_BOUNDARIES: ReadonlyArray<{
 	readonly point: number
 	readonly width: number
@@ -392,10 +515,47 @@ export const UTF8_BOUNDARIES: ReadonlyArray<{
 	{ point: 0x0080, width: 2, reason: 'the first two-byte code point' },
 	{ point: 0x07ff, width: 2, reason: 'the last two-byte code point' },
 	{ point: 0x0800, width: 3, reason: 'the first three-byte code point' },
+	{ point: 0xd7ff, width: 3, reason: 'the last code point before the surrogate range' },
+	{ point: 0xe000, width: 3, reason: 'the first code point after the surrogate range' },
 	{ point: 0xfeff, width: 3, reason: 'the byte order mark, carried as data' },
 	{ point: 0xffff, width: 3, reason: 'the last three-byte code point' },
 	{ point: 0x10000, width: 4, reason: 'the first four-byte code point' },
 	{ point: 0x10ffff, width: 4, reason: 'the last code point Unicode defines' },
+]
+
+/**
+ * Named UTF-8 measure vectors: one text and the wire byte length it encodes to, or `undefined`.
+ *
+ * The rows are written out rather than derived, so a measure that starts counting a width wrong
+ * fails here as well as against the encoder.
+ */
+export const UTF8_MEASURES: ReadonlyArray<{
+	readonly text: string
+	readonly length: number | undefined
+	readonly reason: string
+}> = [
+	{ text: '', length: 0, reason: 'the empty text' },
+	{ text: 'A', length: 1, reason: 'a one-byte code point' },
+	{ text: 'é', length: 2, reason: 'a two-byte code point' },
+	{ text: '€', length: 3, reason: 'a three-byte code point' },
+	{ text: '😀', length: 4, reason: 'a four-byte code point, spelled as a surrogate pair' },
+	{ text: '\u{10000}', length: 4, reason: 'the first four-byte code point' },
+	{ text: '\ud800', length: undefined, reason: 'a lone surrogate, which has no UTF-8 spelling' },
+]
+
+/**
+ * Every text the UTF-8 measure law sweeps: the well-formed population, the ill-formed rows, and
+ * one text per boundary code point.
+ *
+ * The sound-triple law holds over every string rather than over the admitted ones alone, so the
+ * ill-formed rows are population here rather than a separate case: each one owes `undefined` on
+ * both walks.
+ */
+export const UTF8_MEASURE_TEXTS: readonly string[] = [
+	...TEXTS,
+	...ILL_FORMED.map((row) => row.text),
+	...UTF8_BOUNDARIES.map((row) => String.fromCodePoint(row.point)),
+	...UTF8_MEASURES.map((row) => row.text),
 ]
 
 /** Byte sequences strict UTF-8 refuses, each pinned with the rule that refuses it. */

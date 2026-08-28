@@ -194,14 +194,19 @@ export function decodeHex(text: string): Uint8Array<ArrayBuffer> | undefined {
 
 // === The measures
 //
-// A measure answers the decoded length of a text its coding admits, and `undefined` for a text the
-// coding refuses. It walks the same grammar its decoder does and allocates no output buffer, which
-// is the whole reason it exists: a measure that decodes has measured nothing. `measureBase64` and
-// `measureHex` therefore repeat the §4 and §8 walks rather than calling their decoders, and
+// A measure answers its coding's byte-side size question, and `undefined` for a text the coding
+// refuses. Which text it reads belongs to the coding, the same way the encode direction does: an
+// RFC 4648 face's wire form is text, so `measureBase64`, `measureBase64URL`, and `measureHex` take
+// wire text and count the native bytes their decoders would allocate; UTF-8's wire form is bytes,
+// so `measureUTF8` takes native text and counts the wire bytes `encodeUTF8` would write. Every one
+// of them walks the same grammar its partner walks and allocates no output buffer, which is the
+// whole reason it exists: a measure that decodes has measured nothing. `measureBase64` and
+// `measureHex` therefore repeat the §4 and §8 walks rather than calling their decoders,
 // `measureBase64URL` carries the §5 substitution over `measureBase64` exactly as
-// `decodeBase64URL` carries it over `decodeBase64`, so no measure reaches a decoder. The law
-// sweeps in tests/src/core/helpers.test.ts hold each measure against its decoder, two independent
-// walks per face.
+// `decodeBase64URL` carries it over `decodeBase64`, and `measureUTF8` walks the code units rather
+// than calling `encodeUTF8`, so no measure reaches the function it answers for. The law sweeps in
+// tests/src/core/helpers.test.ts hold each measure against that function, two independent walks
+// per face.
 
 /**
  * Measures the byte length canonical standard Base64 text decodes to.
@@ -293,6 +298,50 @@ export function measureHex(text: string): number | undefined {
 		if (high === undefined || low === undefined) return undefined
 	}
 	return text.length / 2
+}
+
+/**
+ * Measures the UTF-8 byte length text encodes to.
+ *
+ * @remarks
+ * Keeps the sound triple `measureUTF8(text) === encodeUTF8(text)?.length` for every string. The
+ * direction is the charset's rather than the RFC 4648 faces': UTF-8's wire form is bytes, so this
+ * measure reads native text and counts the wire bytes {@link encodeUTF8} would write — one per code
+ * point under U+0080, two under U+0800, three under U+10000, and four beyond it — without allocating
+ * any of them. That is its reason to exist, so it walks the code units rather than asking
+ * {@link encodeUTF8}. Ill-formed text is the one refusal, exactly as on the encode side.
+ *
+ * `computeBytes` in `@orkestrel/scaffold` answers a different question for a lone surrogate: it
+ * counts the three bytes `TextEncoder` writes for the replacement character, where this measure
+ * answers `undefined`. That divergence is deliberate — the strict door this package keeps on every
+ * face — and a consumer wanting the replacement count calls the counter that produces it.
+ *
+ * @param text - The text to measure.
+ * @returns The UTF-8 byte length, or `undefined` when `text` is ill-formed.
+ *
+ * @example
+ * ```ts
+ * measureUTF8('hi') // 2
+ * measureUTF8('\ud800') // undefined
+ * ```
+ */
+export function measureUTF8(text: string): number | undefined {
+	if (!text.isWellFormed()) return undefined
+	let total = 0
+	for (let index = 0; index < text.length; index += 1) {
+		const unit = text.charCodeAt(index)
+		if (unit < 0x80) {
+			total += 1
+		} else if (unit < 0x800) {
+			total += 2
+		} else if (unit >= 0xd800 && unit <= 0xdbff) {
+			total += 4
+			index += 1
+		} else {
+			total += 3
+		}
+	}
+	return total
 }
 
 // === The UTF-8 coding

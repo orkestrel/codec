@@ -13,8 +13,8 @@
 		"hex",
 		"latin1",
 		"rfc4648",
-		"utf8",
 		"utf16",
+		"utf8",
 		"windows1252"
 	],
 	"homepage": "https://github.com/orkestrel/codec#readme",

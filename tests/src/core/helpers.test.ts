@@ -25,7 +25,9 @@ import {
 	measureBase64,
 	measureBase64URL,
 	measureHex,
+	measureUTF8,
 } from '@src/core'
+import { WINDOWS_1252_HIGH } from '../../../src/core/constants.js'
 import {
 	decodeUTF8Oracle,
 	decodeUTF16LEOracle,
@@ -40,6 +42,7 @@ import {
 	ILL_FORMED,
 	LATIN1_OCTETS,
 	LATIN1_REFUSALS,
+	MEASURE_MUTANTS,
 	MEASURE_TEXTS,
 	MEASURES,
 	MEMBERSHIP,
@@ -50,9 +53,12 @@ import {
 	SWEEP,
 	TEXTS,
 	UTF8_BOUNDARIES,
+	UTF8_MEASURE_TEXTS,
+	UTF8_MEASURES,
 	UTF8_REFUSALS,
 	UTF16_REFUSALS,
 	VECTORS,
+	WINDOWS_1252_INDEX,
 	WINDOWS_1252_OCTETS,
 	WINDOWS_1252_REFUSALS,
 	WINDOWS_1252_UNDEFINED,
@@ -208,10 +214,12 @@ describe('the iff law — isHex names exactly what decodeHex accepts', () => {
 	}
 })
 
-describe('the measure law — a measure answers the length its decoder would allocate', () => {
-	// Two independent walks per face: the measure computes the length from the text and the decoder
-	// reports the length of bytes it actually wrote. Neither asks the other, so a grammar rule one
-	// of them stops enforcing shows up here as a disagreement.
+describe('the measure law — a measure answers the byte-side size without producing the bytes', () => {
+	// Two independent walks per face: the measure computes the size from the text and the partner
+	// function reports the length of bytes it actually wrote. Neither asks the other, so a grammar
+	// rule one of them stops enforcing shows up here as a disagreement. The partner is the decoder on
+	// the RFC 4648 faces, whose wire form is text, and the encoder on the UTF-8 face, whose wire form
+	// is bytes.
 	it('agrees with decodeBase64 on every sweep text', () => {
 		const drift = MEASURE_TEXTS.filter((text) => measureBase64(text) !== decodeBase64(text)?.length)
 
@@ -246,6 +254,54 @@ describe('the measure law — a measure answers the length its decoder would all
 		expect(drift).toEqual([])
 	})
 
+	// The sweep texts stop at four characters, so a refusal there is never far from the start. The
+	// mutants carry one defect inside an otherwise canonical encoding of up to 24 bytes, which is the
+	// class those short texts cannot witness. This case reads what the population actually reaches on
+	// each face rather than only its size, because a mutant set that happened to admit everything
+	// would pass the law sweep while proving nothing about a refusal.
+	it('carries admitted and refused mutants on every face', () => {
+		const reach = {
+			standard: MEASURE_MUTANTS.filter((text) => measureBase64(text) !== undefined),
+			url: MEASURE_MUTANTS.filter((text) => measureBase64URL(text) !== undefined),
+			hex: MEASURE_MUTANTS.filter((text) => measureHex(text) !== undefined),
+		}
+		const longest = MEASURE_MUTANTS.reduce((width, text) => Math.max(width, text.length), 0)
+
+		expect(longest).toBeGreaterThan(4)
+		for (const [face, admitted] of Object.entries(reach)) {
+			expect(admitted.length, `${face} admits nothing`).toBeGreaterThan(0)
+			expect(admitted.length, `${face} refuses nothing`).toBeLessThan(MEASURE_MUTANTS.length)
+		}
+	})
+
+	it('agrees with encodeUTF8 on every text the UTF-8 measure population reaches', () => {
+		const drift = UTF8_MEASURE_TEXTS.filter(
+			(text) => measureUTF8(text) !== encodeUTF8(text)?.length,
+		)
+
+		expect(UTF8_MEASURE_TEXTS.length).toBeGreaterThan(0)
+		expect(
+			UTF8_MEASURE_TEXTS.filter((text) => measureUTF8(text) === undefined).length,
+		).toBeGreaterThan(0)
+		expect(drift).toEqual([])
+	})
+
+	it('measures every UTF-8 width boundary at the width the specification fixes', () => {
+		for (const row of UTF8_BOUNDARIES) {
+			const text = String.fromCodePoint(row.point)
+
+			expect(measureUTF8(text), `U+${row.point.toString(16)} — ${row.reason}`).toBe(row.width)
+			expect(measureUTF8(text), `U+${row.point.toString(16)}`).toBe(encodeUTF8(text)?.length)
+		}
+	})
+
+	for (const row of UTF8_MEASURES) {
+		it(`measures ${JSON.stringify(row.text)} in the UTF-8 face — ${row.reason}`, () => {
+			expect(measureUTF8(row.text)).toBe(row.length)
+			expect(measureUTF8(row.text)).toBe(encodeUTF8(row.text)?.length)
+		})
+	}
+
 	for (const row of MEASURES) {
 		it(`measures ${JSON.stringify(row.text)} in both Base64 faces — ${row.reason}`, () => {
 			expect(measureBase64(row.text)).toBe(row.standard)
@@ -261,6 +317,28 @@ describe('the measure law — a measure answers the length its decoder would all
 			expect(measureHex(row.text)).toBe(decodeHex(row.text)?.length)
 		})
 	}
+
+	// The membership ruling the guide states for the charsets that ship no measure. Each encoder named
+	// here writes a fixed number of bytes per code unit, so the wire size is `text.length`
+	// arithmetic behind the guard the encoder already applies — a measure there would name no walk
+	// its encoder skips. This case is what breaks if that stops being true.
+	it('leaves the fixed-width charsets no size question a measure would answer', () => {
+		const drift: string[] = []
+		let admitted = 0
+		for (const text of TEXTS) {
+			const latin1 = encodeLatin1(text)
+			const windows = encodeWindows1252(text)
+			const utf16 = encodeUTF16LE(text)
+			if (latin1 !== undefined && latin1.length !== text.length) drift.push(`Latin-1 ${text}`)
+			if (windows !== undefined && windows.length !== text.length)
+				drift.push(`Windows-1252 ${text}`)
+			if (utf16 === undefined || utf16.length !== text.length * 2) drift.push(`UTF-16LE ${text}`)
+			if (latin1 !== undefined) admitted += 1
+		}
+
+		expect(admitted).toBeGreaterThan(0)
+		expect(drift).toEqual([])
+	})
 })
 
 describe('named vectors', () => {
@@ -567,6 +645,84 @@ describe('the platform oracles — the same codings, read by a mechanism that ca
 		}
 
 		expect(drift).toEqual([])
+	})
+
+	// The two-byte sweep reads every pair as a whole buffer, so it never presents a defect that sits
+	// inside a longer sequence with valid text on both sides. Wrapping each pair between two `A`
+	// bytes moves every one of those pairs into the middle of a buffer the decoder has already
+	// started walking, which is where a width that consumes one byte too many or a continuation
+	// check that runs off the end shows up.
+	it('decodes every embedded byte pair the way the strict UTF-8 decoder does', () => {
+		const drift: string[] = []
+		let admitted = 0
+		for (let first = 0; first < 256; first += 1) {
+			for (let second = 0; second < 256; second += 1) {
+				const bytes = new Uint8Array([0x41, first, second, 0x41])
+				const ours = decodeUTF8(bytes)
+				if (ours !== undefined) admitted += 1
+				if (ours !== decodeUTF8Oracle(bytes)) drift.push(`${first},${second}`)
+			}
+		}
+
+		expect(admitted).toBeGreaterThan(0)
+		expect(admitted).toBeLessThan(65536)
+		expect(drift).toEqual([])
+	})
+
+	// A canonical encoding mutated one byte at a time reaches the defects a pair sweep cannot reach
+	// at all: the overlong spellings of a four-byte code point, the encoded surrogates a canonical
+	// U+D7FF sits one lead byte away from, and every continuation byte that stops being one.
+	it('decodes every one-byte mutation of every boundary encoding the way the oracle does', () => {
+		const drift: string[] = []
+		let admitted = 0
+		let compared = 0
+		for (const row of UTF8_BOUNDARIES) {
+			const canonical = requireValue(
+				encodeUTF8(String.fromCodePoint(row.point)),
+				`U+${row.point.toString(16)}`,
+			)
+			for (let position = 0; position < canonical.length; position += 1) {
+				for (let value = 0; value < 256; value += 1) {
+					const bytes = Uint8Array.from(canonical)
+					bytes[position] = value
+					compared += 1
+					const ours = decodeUTF8(bytes)
+					if (ours !== undefined) admitted += 1
+					if (ours !== decodeUTF8Oracle(bytes)) {
+						drift.push(`U+${row.point.toString(16)} at ${position} as ${value}`)
+					}
+				}
+			}
+		}
+
+		expect(compared).toBe(UTF8_BOUNDARIES.reduce((total, row) => total + row.width, 0) * 256)
+		expect(admitted).toBeGreaterThan(0)
+		expect(admitted).toBeLessThan(compared)
+		expect(drift).toEqual([])
+	})
+
+	// The written-out high table and the WHATWG index share no provenance with each other, but the
+	// index defines all 256 slots, so it is silent on exactly the omissions that make this code page
+	// what it is. WINDOWS_1252_INDEX is the second mechanism that can speak there: a hand
+	// transcription of the published table, carrying the characters rather than their code points and
+	// omitting the undefined slots, the way RFC_STANDARD is the second mechanism for the alphabets.
+	it('reads the written-out high table entry by entry against the published index', () => {
+		const drift: string[] = []
+		for (const [key, point] of Object.entries(WINDOWS_1252_HIGH)) {
+			const character = WINDOWS_1252_INDEX[key]
+			if (character === undefined) drift.push(`${key} absent from the index`)
+			else if (character.codePointAt(0) !== point) drift.push(`${key} names another character`)
+		}
+		const extra = Object.keys(WINDOWS_1252_INDEX).filter(
+			(key) => !Object.hasOwn(WINDOWS_1252_HIGH, key),
+		)
+
+		expect(drift).toEqual([])
+		expect(extra).toEqual([])
+		expect(Object.keys(WINDOWS_1252_INDEX).length).toBe(0x20 - WINDOWS_1252_UNDEFINED.length)
+		expect(
+			WINDOWS_1252_UNDEFINED.filter((value) => Object.hasOwn(WINDOWS_1252_INDEX, String(value))),
+		).toEqual([])
 	})
 
 	it('decodes every single byte and every pinned refusal the way the oracles do', () => {
