@@ -1,4 +1,10 @@
-import { BASE64_ALPHABET, BASE64_LOOKUP, HEX_ALPHABET, HEX_LOOKUP } from './constants.js'
+import {
+	BASE64_ALPHABET,
+	BASE64_LOOKUP,
+	HEX_ALPHABET,
+	HEX_LOOKUP,
+	WINDOWS_1252_HIGH,
+} from './constants.js'
 
 // === The RFC 4648 codings
 //
@@ -287,4 +293,335 @@ export function measureHex(text: string): number | undefined {
 		if (high === undefined || low === undefined) return undefined
 	}
 	return text.length / 2
+}
+
+// === The UTF-8 coding
+//
+// The charset codings run the other way round from the RFC 4648 faces. A charset's wire form is
+// bytes and its native form is text, so `encodeUTF8` takes text and answers bytes and `decodeUTF8`
+// takes bytes and answers text. The two laws are unchanged under that inversion: encoding a text
+// and decoding the result returns the text, and decoding admitted bytes and re-encoding them
+// returns those bytes.
+//
+// `encodeUTF8` refuses exactly the ill-formed strings, which `String.prototype.isWellFormed`
+// already names, and emits the RFC 3629 shortest form for everything else. `decodeUTF8` walks the
+// same grammar in reverse and refuses every non-shortest or out-of-range spelling: a lead byte the
+// grammar has no width for (0xC0, 0xC1, and 0xF5 through 0xFF), a continuation byte that is not
+// 0b10xxxxxx, a sequence the buffer truncates, an overlong three- or four-byte form, an encoded
+// surrogate, and a code point past U+10FFFF. A leading BOM is data here rather than a signal:
+// U+FEFF encodes to EF BB BF and those bytes decode back to U+FEFF, because the round-trip law
+// admits no byte the decoder is allowed to discard.
+
+/**
+ * Encodes text as UTF-8 bytes.
+ *
+ * @remarks
+ * Emits the RFC 3629 shortest form for every code point — the canonical spelling of this text and
+ * the only form {@link decodeUTF8} accepts. Ill-formed text is the one failure: a lone surrogate
+ * has no UTF-8 spelling, so `encodeUTF8` answers `undefined` for exactly the strings
+ * `String.prototype.isWellFormed` reports false for. U+FEFF encodes to its own bytes wherever it
+ * sits, leading position included; this coding reads no byte order mark.
+ *
+ * @param text - The text to encode.
+ * @returns The UTF-8 bytes, or `undefined` when `text` is ill-formed.
+ *
+ * @example
+ * ```ts
+ * encodeUTF8('hi') // Uint8Array [104, 105]
+ * encodeUTF8('\ud800') // undefined
+ * ```
+ */
+export function encodeUTF8(text: string): Uint8Array<ArrayBuffer> | undefined {
+	if (!text.isWellFormed()) return undefined
+	const bytes: number[] = []
+	for (let index = 0; index < text.length; index += 1) {
+		let point = text.charCodeAt(index)
+		if (point >= 0xd800 && point <= 0xdbff) {
+			point = (point - 0xd800) * 0x400 + (text.charCodeAt(index + 1) - 0xdc00) + 0x10000
+			index += 1
+		}
+		if (point < 0x80) {
+			bytes.push(point)
+		} else if (point < 0x800) {
+			bytes.push(0xc0 | (point >> 6), 0x80 | (point & 0x3f))
+		} else if (point < 0x10000) {
+			bytes.push(0xe0 | (point >> 12), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f))
+		} else {
+			bytes.push(
+				0xf0 | (point >> 18),
+				0x80 | ((point >> 12) & 0x3f),
+				0x80 | ((point >> 6) & 0x3f),
+				0x80 | (point & 0x3f),
+			)
+		}
+	}
+	return Uint8Array.from(bytes)
+}
+
+/**
+ * Decodes UTF-8 bytes into their text.
+ *
+ * @remarks
+ * Accepts only the RFC 3629 shortest form {@link encodeUTF8} produces. An overlong spelling, an
+ * encoded surrogate, a code point past U+10FFFF, a truncated sequence, a stray continuation byte,
+ * and a lead byte outside the grammar are all `undefined`. A leading BOM is preserved as U+FEFF
+ * rather than stripped, because the round-trip law leaves the decoder no byte it may discard —
+ * that is this coding's one documented departure from the platform's own default decoder.
+ * `undefined` is the only failure mode; nothing here throws.
+ *
+ * @param bytes - The bytes to decode.
+ * @returns The decoded text, or `undefined` when `bytes` are not strict UTF-8.
+ *
+ * @example
+ * ```ts
+ * decodeUTF8(new Uint8Array([104, 105])) // 'hi'
+ * decodeUTF8(new Uint8Array([0xc0, 0x80])) // undefined
+ * ```
+ */
+export function decodeUTF8(bytes: Uint8Array): string | undefined {
+	let text = ''
+	let index = 0
+	while (index < bytes.length) {
+		const lead = bytes[index] ?? 0
+		const width =
+			lead < 0x80
+				? 1
+				: lead >= 0xc2 && lead <= 0xdf
+					? 2
+					: lead >= 0xe0 && lead <= 0xef
+						? 3
+						: lead >= 0xf0 && lead <= 0xf4
+							? 4
+							: 0
+		if (width === 0 || index + width > bytes.length) return undefined
+		let point = width === 1 ? lead : lead & (0xff >> (width + 1))
+		for (let offset = 1; offset < width; offset += 1) {
+			const continuation = bytes[index + offset] ?? 0
+			if ((continuation & 0xc0) !== 0x80) return undefined
+			point = (point << 6) | (continuation & 0x3f)
+		}
+		if (width === 3 && point < 0x800) return undefined
+		if (width === 4 && point < 0x10000) return undefined
+		if (point >= 0xd800 && point <= 0xdfff) return undefined
+		if (point > 0x10ffff) return undefined
+		text += String.fromCodePoint(point)
+		index += width
+	}
+	return text
+}
+
+// === The ISO-8859-1 coding
+//
+// Latin-1 is the identity on a byte: byte `b` is code point U+00`b`, and nothing else. That makes
+// the decode direction total — every one of the 256 byte values names a character — so this is the
+// one coding here whose decoder cannot fail, and the only failure left is a text carrying a code
+// unit past 0xFF. The band 0x80-0x9F is the C1 control block under this coding, which is exactly
+// where Windows-1252 puts its printable characters instead; the WHATWG `latin1` label names the
+// windows-1252 coding rather than this one.
+
+/**
+ * Encodes text as ISO/IEC 8859-1 bytes.
+ *
+ * @remarks
+ * Writes each code unit as the byte of the same value, which is the whole of ISO/IEC 8859-1. A
+ * code unit past 0xFF has no byte in this coding, so `encodeLatin1` answers `undefined` for any
+ * text carrying one — a lone surrogate included, because every surrogate sits past 0xFF.
+ *
+ * @param text - The text to encode.
+ * @returns The Latin-1 bytes, or `undefined` when a code unit exceeds 0xFF.
+ *
+ * @example
+ * ```ts
+ * encodeLatin1('hi') // Uint8Array [104, 105]
+ * encodeLatin1('Ā') // undefined
+ * ```
+ */
+export function encodeLatin1(text: string): Uint8Array<ArrayBuffer> | undefined {
+	const bytes = new Uint8Array(text.length)
+	for (let index = 0; index < text.length; index += 1) {
+		const unit = text.charCodeAt(index)
+		if (unit > 0xff) return undefined
+		bytes[index] = unit
+	}
+	return bytes
+}
+
+/**
+ * Decodes ISO/IEC 8859-1 bytes into their text.
+ *
+ * @remarks
+ * Reads each byte as the code point of the same value. Every byte names a character, so this
+ * decoder is total: it has no failure mode and no `undefined` return, and `isLatin1` therefore
+ * guards the encode direction instead. Do not reach for the WHATWG `latin1` label to check this
+ * coding — that label names windows-1252, which disagrees across 0x80-0x9F.
+ *
+ * @param bytes - The bytes to decode.
+ * @returns The decoded text.
+ *
+ * @example
+ * ```ts
+ * decodeLatin1(new Uint8Array([104, 105])) // 'hi'
+ * decodeLatin1(new Uint8Array([0xe9])) // 'é' — total: every byte names a character
+ * ```
+ */
+export function decodeLatin1(bytes: Uint8Array): string {
+	let text = ''
+	for (const byte of bytes) text += String.fromCharCode(byte)
+	return text
+}
+
+// === The Windows-1252 coding
+//
+// The code page is the Latin-1 identity outside 0x80-0x9F and WINDOWS_1252_HIGH inside it, and the
+// table's omissions are the refusal: 0x81, 0x8D, 0x8F, 0x90, and 0x9D name no character, so
+// `decodeWindows1252` answers `undefined` for them. The defined mapping is a bijection, so
+// `encodeWindows1252` is its inverse and refuses exactly the characters outside its image — every
+// C1 control among them, because no defined slot maps into U+0080-U+009F.
+
+/**
+ * Encodes text as Windows-1252 bytes.
+ *
+ * @remarks
+ * Inverts the mapping {@link decodeWindows1252} reads: the identity under U+0080 and across
+ * U+00A0-U+00FF, and the reverse of the high table between them. A character outside that image
+ * has no byte in this code page, so `encodeWindows1252` answers `undefined` for it — every C1
+ * control included, because the code page's defined slots reach none of U+0080-U+009F.
+ *
+ * @param text - The text to encode.
+ * @returns The Windows-1252 bytes, or `undefined` when a character is outside the code page.
+ *
+ * @example
+ * ```ts
+ * encodeWindows1252('€') // Uint8Array [128]
+ * encodeWindows1252('\u0081') // undefined — an undefined code-page slot
+ * ```
+ */
+export function encodeWindows1252(text: string): Uint8Array<ArrayBuffer> | undefined {
+	const entries = Object.entries(WINDOWS_1252_HIGH)
+	const bytes = new Uint8Array(text.length)
+	for (let index = 0; index < text.length; index += 1) {
+		const unit = text.charCodeAt(index)
+		if (unit < 0x80 || (unit >= 0xa0 && unit <= 0xff)) {
+			bytes[index] = unit
+			continue
+		}
+		const entry = entries.find(([, point]) => point === unit)
+		if (entry === undefined) return undefined
+		bytes[index] = Number(entry[0])
+	}
+	return bytes
+}
+
+/**
+ * Decodes Windows-1252 bytes into their text.
+ *
+ * @remarks
+ * Reads 0x00-0x7F and 0xA0-0xFF as the identity and 0x80-0x9F through the written-out high table.
+ * Bytes 0x81, 0x8D, 0x8F, 0x90, and 0x9D are undefined in the code page and are refused here. The
+ * WHATWG Encoding index maps each of those to its own C1 control, so a platform decoder carrying
+ * that index disagrees with this one on exactly those bytes. `undefined` is the only failure mode;
+ * nothing here throws.
+ *
+ * @param bytes - The bytes to decode.
+ * @returns The decoded text, or `undefined` when a byte is an undefined code-page slot.
+ *
+ * @example
+ * ```ts
+ * decodeWindows1252(new Uint8Array([128])) // '€'
+ * decodeWindows1252(new Uint8Array([0x81])) // undefined
+ * ```
+ */
+export function decodeWindows1252(bytes: Uint8Array): string | undefined {
+	let text = ''
+	for (const byte of bytes) {
+		if (byte < 0x80 || byte >= 0xa0) {
+			text += String.fromCharCode(byte)
+			continue
+		}
+		const point = WINDOWS_1252_HIGH[byte]
+		if (point === undefined) return undefined
+		text += String.fromCharCode(point)
+	}
+	return text
+}
+
+// === The UTF-16LE coding
+//
+// Two bytes per code unit, low byte first. The text side is what JavaScript strings already are, so
+// `encodeUTF16LE` writes the code units straight out and refuses only what has no UTF-16 spelling
+// at all — an unpaired surrogate, which `String.prototype.isWellFormed` names. The byte side
+// carries the two refusals the wire form adds: an odd length, which cannot be read as code units,
+// and a surrogate the byte stream leaves unpaired. A leading FF FE is data here rather than a byte
+// order mark: it decodes to U+FEFF and encodes back to those bytes, the same stance the UTF-8 face
+// takes for EF BB BF.
+
+/**
+ * Encodes text as little-endian UTF-16 bytes.
+ *
+ * @remarks
+ * Writes each code unit as its low byte then its high byte, which is the whole coding. Ill-formed
+ * text is the one failure: an unpaired surrogate is not a UTF-16 sequence, so `encodeUTF16LE`
+ * answers `undefined` for exactly the strings `String.prototype.isWellFormed` reports false for. A
+ * leading U+FEFF encodes to FF FE and is read back as U+FEFF; this coding writes no byte order
+ * mark of its own.
+ *
+ * @param text - The text to encode.
+ * @returns The UTF-16LE bytes, or `undefined` when `text` is ill-formed.
+ *
+ * @example
+ * ```ts
+ * encodeUTF16LE('hi') // Uint8Array [104, 0, 105, 0]
+ * encodeUTF16LE('\ud800') // undefined
+ * ```
+ */
+export function encodeUTF16LE(text: string): Uint8Array<ArrayBuffer> | undefined {
+	if (!text.isWellFormed()) return undefined
+	const bytes = new Uint8Array(text.length * 2)
+	for (let index = 0; index < text.length; index += 1) {
+		const unit = text.charCodeAt(index)
+		bytes[index * 2] = unit & 0xff
+		bytes[index * 2 + 1] = (unit >> 8) & 0xff
+	}
+	return bytes
+}
+
+/**
+ * Decodes little-endian UTF-16 bytes into their text.
+ *
+ * @remarks
+ * Reads two bytes per code unit, low byte first. An odd length is refused because the trailing byte
+ * completes no code unit, and an unpaired surrogate is refused because it spells no character — a
+ * lead with nothing after it, a lead followed by a non-trail, and a trail with no lead alike. A
+ * leading FF FE is preserved as U+FEFF rather than stripped, which is this coding's documented
+ * departure from the platform's own default decoder. `undefined` is the only failure mode; nothing
+ * here throws.
+ *
+ * @param bytes - The bytes to decode.
+ * @returns The decoded text, or `undefined` when `bytes` are not well-formed UTF-16LE.
+ *
+ * @example
+ * ```ts
+ * decodeUTF16LE(new Uint8Array([104, 0, 105, 0])) // 'hi'
+ * decodeUTF16LE(new Uint8Array([0x00, 0xd8])) // undefined
+ * ```
+ */
+export function decodeUTF16LE(bytes: Uint8Array): string | undefined {
+	if (bytes.length % 2 !== 0) return undefined
+	let text = ''
+	let index = 0
+	while (index < bytes.length) {
+		const unit = ((bytes[index + 1] ?? 0) << 8) | (bytes[index] ?? 0)
+		if (unit >= 0xdc00 && unit <= 0xdfff) return undefined
+		if (unit >= 0xd800 && unit <= 0xdbff) {
+			if (index + 4 > bytes.length) return undefined
+			const trail = ((bytes[index + 3] ?? 0) << 8) | (bytes[index + 2] ?? 0)
+			if (trail < 0xdc00 || trail > 0xdfff) return undefined
+			text += String.fromCharCode(unit, trail)
+			index += 4
+			continue
+		}
+		text += String.fromCharCode(unit)
+		index += 2
+	}
+	return text
 }

@@ -4,23 +4,42 @@ import {
 	decodeBase64,
 	decodeBase64URL,
 	decodeHex,
+	decodeLatin1,
+	decodeUTF8,
+	decodeUTF16LE,
+	decodeWindows1252,
 	encodeBase64,
 	encodeBase64URL,
 	encodeHex,
+	encodeLatin1,
+	encodeUTF8,
+	encodeUTF16LE,
+	encodeWindows1252,
 	isBase64,
 	isBase64URL,
 	isHex,
+	isLatin1,
+	isUTF8,
+	isUTF16LE,
+	isWindows1252,
 	measureBase64,
 	measureBase64URL,
 	measureHex,
 } from '@src/core'
 import {
+	decodeUTF8Oracle,
+	decodeUTF16LEOracle,
+	encodeUTF8Oracle,
 	FOREIGN,
+	FOREIGN_BYTES,
 	HEX_MEASURE_TEXTS,
 	HEX_MEASURES,
 	HEX_MEMBERSHIP,
 	HEX_OCTETS,
 	HEX_SWEEP,
+	ILL_FORMED,
+	LATIN1_OCTETS,
+	LATIN1_REFUSALS,
 	MEASURE_TEXTS,
 	MEASURES,
 	MEMBERSHIP,
@@ -29,7 +48,14 @@ import {
 	RFC_URL,
 	SEXTETS,
 	SWEEP,
+	TEXTS,
+	UTF8_BOUNDARIES,
+	UTF8_REFUSALS,
+	UTF16_REFUSALS,
 	VECTORS,
+	WINDOWS_1252_OCTETS,
+	WINDOWS_1252_REFUSALS,
+	WINDOWS_1252_UNDEFINED,
 } from '../../setup.js'
 
 // The laws this package exists to keep, driven as sweeps rather than as spot vectors:
@@ -295,29 +321,423 @@ describe('the alphabets', () => {
 	})
 })
 
+// The charset codings run the other way round: bytes are the wire form, so `encode*` takes text and
+// `decode*` takes bytes. The two laws survive that inversion unchanged, and the following sweeps
+// drive them in the direction each coding's partial function points.
+//
+// Every platform oracle here was probed before a sweep was written against it, and each probed
+// divergence bounds the population the oracle is allowed to judge. The `latin1` label is not used
+// at all: it reports `encoding === 'windows-1252'`, so `String.fromCharCode` — the coding's own
+// definition — is the ISO-8859-1 oracle instead, carried by LATIN1_OCTETS.
+
+describe('the round-trip law — the charset codings', () => {
+	it('round-trips every well-formed text through UTF-8 and UTF-16LE', () => {
+		const drift: string[] = []
+		for (const text of TEXTS) {
+			const utf8 = encodeUTF8(text)
+			const utf16 = encodeUTF16LE(text)
+			if (utf8 === undefined || decodeUTF8(utf8) !== text)
+				drift.push(`UTF-8 ${JSON.stringify(text)}`)
+			if (utf16 === undefined || decodeUTF16LE(utf16) !== text) {
+				drift.push(`UTF-16LE ${JSON.stringify(text)}`)
+			}
+		}
+
+		expect(TEXTS.length).toBeGreaterThan(0)
+		expect(drift).toEqual([])
+	})
+
+	it('spells every UTF-8 width boundary at the width the specification fixes', () => {
+		for (const row of UTF8_BOUNDARIES) {
+			const text = String.fromCodePoint(row.point)
+			const bytes = requireValue(encodeUTF8(text), `U+${row.point.toString(16)}`)
+
+			expect(bytes.length, `U+${row.point.toString(16)} — ${row.reason}`).toBe(row.width)
+			expect(decodeUTF8(bytes), `U+${row.point.toString(16)}`).toBe(text)
+			expect(decodeUTF16LE(requireValue(encodeUTF16LE(text))), `U+${row.point.toString(16)}`).toBe(
+				text,
+			)
+		}
+	})
+
+	it('round-trips the whole octet space through the Latin-1 face in one buffer', () => {
+		expect(encodeLatin1(decodeLatin1(OCTETS))).toStrictEqual(OCTETS)
+	})
+
+	it('round-trips every single byte through the Latin-1 face', () => {
+		for (const value of OCTETS) {
+			const bytes = new Uint8Array([value])
+
+			expect(encodeLatin1(decodeLatin1(bytes)), `byte ${value}`).toStrictEqual(bytes)
+		}
+	})
+
+	it('round-trips every defined Windows-1252 byte in both directions', () => {
+		const drift: string[] = []
+		for (const value of OCTETS) {
+			const bytes = new Uint8Array([value])
+			const text = decodeWindows1252(bytes)
+			if (WINDOWS_1252_UNDEFINED.includes(value)) {
+				if (text !== undefined) drift.push(`slot ${value} admitted`)
+				continue
+			}
+			if (text === undefined) drift.push(`byte ${value} refused`)
+			else if (encodeWindows1252(text)?.[0] !== value) drift.push(`byte ${value} re-encoded`)
+		}
+
+		expect(drift).toEqual([])
+	})
+
+	it('round-trips every text the Latin-1 and Windows-1252 faces admit', () => {
+		const latin1 = TEXTS.filter((text) => isLatin1(text))
+		const windows = TEXTS.filter((text) => encodeWindows1252(text) !== undefined)
+
+		expect(latin1.length).toBeGreaterThan(0)
+		expect(windows.length).toBeGreaterThan(0)
+		expect(TEXTS.length).toBeGreaterThan(latin1.length)
+		expect(TEXTS.length).toBeGreaterThan(windows.length)
+		expect(
+			latin1.filter((text) => decodeLatin1(requireValue(encodeLatin1(text))) !== text),
+		).toEqual([])
+		expect(
+			windows.filter((text) => decodeWindows1252(requireValue(encodeWindows1252(text))) !== text),
+		).toEqual([])
+	})
+})
+
+describe('the canonical-form law — re-encoding admitted bytes returns the bytes', () => {
+	// Two independent walks meet here: the decoder reads the byte grammar and the encoder writes it
+	// back from the text alone. A width rule one of them stops enforcing shows up as a disagreement
+	// over the exhaustive two-byte space rather than as a spot vector.
+	it('re-encodes every admitted byte pair through the UTF-8 and UTF-16LE faces', () => {
+		const drift: string[] = []
+		let admittedUTF8 = 0
+		let admittedUTF16 = 0
+		for (let first = 0; first < 256; first += 1) {
+			for (let second = 0; second < 256; second += 1) {
+				const bytes = new Uint8Array([first, second])
+				const utf8 = decodeUTF8(bytes)
+				const utf16 = decodeUTF16LE(bytes)
+				if (utf8 !== undefined) {
+					admittedUTF8 += 1
+					const back = encodeUTF8(utf8)
+					if (back === undefined || back[0] !== first || back[1] !== second) {
+						drift.push(`UTF-8 ${first},${second}`)
+					}
+				}
+				if (utf16 !== undefined) {
+					admittedUTF16 += 1
+					const back = encodeUTF16LE(utf16)
+					if (back === undefined || back[0] !== first || back[1] !== second) {
+						drift.push(`UTF-16LE ${first},${second}`)
+					}
+				}
+			}
+		}
+
+		expect(admittedUTF8).toBeGreaterThan(0)
+		expect(admittedUTF16).toBeGreaterThan(0)
+		expect(admittedUTF8).toBeLessThan(65536)
+		expect(admittedUTF16).toBeLessThan(65536)
+		expect(drift).toEqual([])
+	})
+
+	it('re-encodes every admitted byte pair through the Latin-1 and Windows-1252 faces', () => {
+		const drift: string[] = []
+		for (let first = 0; first < 256; first += 1) {
+			for (let second = 0; second < 256; second += 1) {
+				const bytes = new Uint8Array([first, second])
+				const latin1 = encodeLatin1(decodeLatin1(bytes))
+				if (latin1 === undefined || latin1[0] !== first || latin1[1] !== second) {
+					drift.push(`Latin-1 ${first},${second}`)
+				}
+				const text = decodeWindows1252(bytes)
+				if (text === undefined) continue
+				const back = encodeWindows1252(text)
+				if (back === undefined || back[0] !== first || back[1] !== second) {
+					drift.push(`Windows-1252 ${first},${second}`)
+				}
+			}
+		}
+
+		expect(drift).toEqual([])
+	})
+
+	it('reads the Windows-1252 defined mapping as a bijection', () => {
+		const owner = new Map<string, number>()
+		const collisions: string[] = []
+		for (const value of OCTETS) {
+			const text = decodeWindows1252(new Uint8Array([value]))
+			if (text === undefined) continue
+			const previous = owner.get(text)
+			if (previous !== undefined) collisions.push(`${previous},${value}`)
+			owner.set(text, value)
+		}
+
+		expect(collisions).toEqual([])
+		expect(owner.size).toBe(OCTETS.length - WINDOWS_1252_UNDEFINED.length)
+	})
+
+	it('reads the Latin-1 mapping as the identity bijection', () => {
+		const drift: string[] = []
+		for (const value of OCTETS) {
+			const text = decodeLatin1(new Uint8Array([value]))
+			if (text.length !== 1 || text.codePointAt(0) !== value) drift.push(`byte ${value}`)
+		}
+
+		expect(drift).toEqual([])
+		expect(new Set(LATIN1_OCTETS).size).toBe(OCTETS.length)
+	})
+})
+
+describe('the strict refusals — each charset door, pinned', () => {
+	for (const row of UTF8_REFUSALS) {
+		it(`refuses ${JSON.stringify(row.bytes)} on the UTF-8 face — ${row.reason}`, () => {
+			const bytes = new Uint8Array(row.bytes)
+
+			expect(decodeUTF8(bytes)).toBeUndefined()
+			expect(isUTF8(bytes)).toBe(false)
+		})
+	}
+
+	for (const row of UTF16_REFUSALS) {
+		it(`refuses ${JSON.stringify(row.bytes)} on the UTF-16LE face — ${row.reason}`, () => {
+			const bytes = new Uint8Array(row.bytes)
+
+			expect(decodeUTF16LE(bytes)).toBeUndefined()
+			expect(isUTF16LE(bytes)).toBe(false)
+		})
+	}
+
+	for (const value of WINDOWS_1252_UNDEFINED) {
+		it(`refuses the undefined Windows-1252 slot 0x${value.toString(16)}`, () => {
+			const bytes = new Uint8Array([value])
+
+			expect(decodeWindows1252(bytes)).toBeUndefined()
+			expect(isWindows1252(bytes)).toBe(false)
+			// The WHATWG index maps this slot to its own C1 control, so the platform oracle admits
+			// exactly what this coding refuses. That divergence is the reason the oracle sweep runs
+			// over the defined bytes alone.
+			expect(WINDOWS_1252_OCTETS[value]).toBe(String.fromCharCode(value))
+		})
+	}
+
+	for (const row of LATIN1_REFUSALS) {
+		it(`refuses ${JSON.stringify(row.text)} on the Latin-1 face — ${row.reason}`, () => {
+			expect(encodeLatin1(row.text)).toBeUndefined()
+			expect(isLatin1(row.text)).toBe(false)
+		})
+	}
+
+	for (const row of WINDOWS_1252_REFUSALS) {
+		it(`refuses ${JSON.stringify(row.text)} on the Windows-1252 face — ${row.reason}`, () => {
+			expect(encodeWindows1252(row.text)).toBeUndefined()
+		})
+	}
+
+	for (const row of ILL_FORMED) {
+		it(`refuses ${JSON.stringify(row.text)} on both text sides — ${row.reason}`, () => {
+			expect(row.text.isWellFormed()).toBe(false)
+			expect(encodeUTF8(row.text)).toBeUndefined()
+			expect(encodeUTF16LE(row.text)).toBeUndefined()
+		})
+	}
+
+	it('refuses every C1 control on the Windows-1252 text side', () => {
+		const admitted: number[] = []
+		for (let point = 0x80; point <= 0x9f; point += 1) {
+			if (encodeWindows1252(String.fromCharCode(point)) !== undefined) admitted.push(point)
+		}
+
+		expect(admitted).toEqual([])
+	})
+})
+
+describe('the platform oracles — the same codings, read by a mechanism that can disagree', () => {
+	it('decodes every byte pair the way the strict UTF-8 and UTF-16LE decoders do', () => {
+		const drift: string[] = []
+		for (let first = 0; first < 256; first += 1) {
+			for (let second = 0; second < 256; second += 1) {
+				const bytes = new Uint8Array([first, second])
+				if (decodeUTF8(bytes) !== decodeUTF8Oracle(bytes)) drift.push(`UTF-8 ${first},${second}`)
+				if (decodeUTF16LE(bytes) !== decodeUTF16LEOracle(bytes)) {
+					drift.push(`UTF-16LE ${first},${second}`)
+				}
+			}
+		}
+
+		expect(drift).toEqual([])
+	})
+
+	it('decodes every single byte and every pinned refusal the way the oracles do', () => {
+		const drift: string[] = []
+		for (const value of OCTETS) {
+			const bytes = new Uint8Array([value])
+			if (decodeUTF8(bytes) !== decodeUTF8Oracle(bytes)) drift.push(`byte ${value}`)
+		}
+		for (const row of [...UTF8_REFUSALS, ...UTF16_REFUSALS]) {
+			const bytes = new Uint8Array(row.bytes)
+			if (decodeUTF8(bytes) !== decodeUTF8Oracle(bytes)) drift.push(`UTF-8 ${row.reason}`)
+			if (decodeUTF16LE(bytes) !== decodeUTF16LEOracle(bytes)) drift.push(`UTF-16LE ${row.reason}`)
+		}
+
+		expect(drift).toEqual([])
+	})
+
+	it('encodes every well-formed text the way the platform encoder does', () => {
+		const drift: string[] = []
+		for (const text of TEXTS) {
+			const ours = requireValue(encodeUTF8(text), JSON.stringify(text))
+			const theirs = encodeUTF8Oracle(text)
+			if (ours.length !== theirs.length) drift.push(`length ${JSON.stringify(text)}`)
+			else if (theirs.some((byte, index) => ours[index] !== byte)) drift.push(JSON.stringify(text))
+		}
+
+		expect(TEXTS.length).toBeGreaterThan(0)
+		expect(drift).toEqual([])
+	})
+
+	it('reads its own UTF-16LE encodings back through the platform decoder', () => {
+		const drift: string[] = []
+		for (const text of TEXTS) {
+			const bytes = requireValue(encodeUTF16LE(text), JSON.stringify(text))
+			if (decodeUTF16LEOracle(bytes) !== text) drift.push(JSON.stringify(text))
+		}
+
+		expect(drift).toEqual([])
+	})
+
+	// The oracle here is restricted to the bytes it agrees on. The WHATWG windows-1252 index defines
+	// an entry for every byte, so it cannot judge the slots this coding refuses; those are pinned
+	// directly in the strict-refusal rows instead.
+	it('decodes every defined Windows-1252 byte the way the WHATWG index does', () => {
+		const drift: string[] = []
+		let compared = 0
+		for (const value of OCTETS) {
+			if (WINDOWS_1252_UNDEFINED.includes(value)) continue
+			compared += 1
+			if (decodeWindows1252(new Uint8Array([value])) !== WINDOWS_1252_OCTETS[value]) {
+				drift.push(`byte ${value}`)
+			}
+		}
+
+		expect(compared).toBe(OCTETS.length - WINDOWS_1252_UNDEFINED.length)
+		expect(drift).toEqual([])
+	})
+
+	it('encodes every defined Windows-1252 character back to the byte the index names', () => {
+		const drift: string[] = []
+		for (const value of OCTETS) {
+			if (WINDOWS_1252_UNDEFINED.includes(value)) continue
+			const character = requireValue(WINDOWS_1252_OCTETS[value], `byte ${value}`)
+			if (encodeWindows1252(character)?.[0] !== value) drift.push(`byte ${value}`)
+		}
+
+		expect(drift).toEqual([])
+	})
+
+	it('decodes every byte the way ISO-8859-1 defines it, which the latin1 label does not', () => {
+		const drift: string[] = []
+		const labelDisagrees: number[] = []
+		for (const value of OCTETS) {
+			const character = requireValue(LATIN1_OCTETS[value], `byte ${value}`)
+			if (decodeLatin1(new Uint8Array([value])) !== character) drift.push(`byte ${value}`)
+			if (WINDOWS_1252_OCTETS[value] !== character) labelDisagrees.push(value)
+		}
+
+		expect(drift).toEqual([])
+		// The WHATWG `latin1` label is windows-1252, so the two codings part company across the high
+		// band. This assertion is what stops a later reader reaching for that label as the oracle.
+		expect(labelDisagrees.length).toBeGreaterThan(0)
+		expect(labelDisagrees.every((value) => value >= 0x80 && value <= 0x9f)).toBe(true)
+	})
+})
+
+describe('the iff law — each charset guard names exactly what its partial direction accepts', () => {
+	it('binds isUTF8, isWindows1252, and isUTF16LE to their decoders over every byte pair', () => {
+		const drift: string[] = []
+		for (let first = 0; first < 256; first += 1) {
+			for (let second = 0; second < 256; second += 1) {
+				const bytes = new Uint8Array([first, second])
+				if (isUTF8(bytes) !== (decodeUTF8(bytes) !== undefined)) drift.push(`UTF-8 ${first}`)
+				if (isUTF16LE(bytes) !== (decodeUTF16LE(bytes) !== undefined)) {
+					drift.push(`UTF-16LE ${first},${second}`)
+				}
+				if (isWindows1252(bytes) !== (decodeWindows1252(bytes) !== undefined)) {
+					drift.push(`Windows-1252 ${first},${second}`)
+				}
+			}
+		}
+
+		expect(drift).toEqual([])
+	})
+
+	it('binds isLatin1 to its encoder over every text, the partial direction it guards', () => {
+		const drift = TEXTS.filter((text) => isLatin1(text) !== (encodeLatin1(text) !== undefined))
+
+		expect(TEXTS.length).toBeGreaterThan(0)
+		expect(drift).toEqual([])
+	})
+
+	it('names no guard for the total Latin-1 decoder and no guard for the UTF-8 text side', () => {
+		// `decodeLatin1` returns a string for every byte sequence, so a bytes-side Latin-1 guard would
+		// answer true for everything and name nothing. `encodeUTF8` refuses exactly the ill-formed
+		// strings, which the platform already names, so its text side needs no wrapper either.
+		for (const value of OCTETS) {
+			expect(typeof decodeLatin1(new Uint8Array([value])), `byte ${value}`).toBe('string')
+		}
+		const drift = [...TEXTS, ...ILL_FORMED.map((row) => row.text)].filter(
+			(text) => text.isWellFormed() !== (encodeUTF8(text) !== undefined),
+		)
+
+		expect(drift).toEqual([])
+	})
+})
+
 describe('guard totality', () => {
 	it('refuses every value that is not a string', () => {
 		for (const [index, value] of FOREIGN.entries()) {
 			expect(isBase64(value), `foreign value ${index}`).toBe(false)
 			expect(isBase64URL(value), `foreign value ${index}`).toBe(false)
 			expect(isHex(value), `foreign value ${index}`).toBe(false)
+			expect(isLatin1(value), `foreign value ${index}`).toBe(false)
+		}
+	})
+
+	it('refuses every value that is not a byte sequence', () => {
+		for (const [index, value] of FOREIGN_BYTES.entries()) {
+			expect(isUTF8(value), `foreign value ${index}`).toBe(false)
+			expect(isWindows1252(value), `foreign value ${index}`).toBe(false)
+			expect(isUTF16LE(value), `foreign value ${index}`).toBe(false)
 		}
 	})
 
 	it('answers false for every hostile value without throwing', () => {
 		for (const [index, value] of createHostileValues().entries()) {
-			let standard: boolean | undefined
-			let url: boolean | undefined
-			let hex: boolean | undefined
+			const answers: Record<string, boolean | undefined> = {}
 
 			expect(() => {
-				standard = isBase64(value)
-				url = isBase64URL(value)
-				hex = isHex(value)
+				answers.standard = isBase64(value)
+				answers.url = isBase64URL(value)
+				answers.hex = isHex(value)
+				answers.utf8 = isUTF8(value)
+				answers.latin1 = isLatin1(value)
+				answers.windows = isWindows1252(value)
+				answers.utf16 = isUTF16LE(value)
 			}, `hostile value ${index}`).not.toThrow()
-			expect(standard, `hostile value ${index}`).toBe(false)
-			expect(url, `hostile value ${index}`).toBe(false)
-			expect(hex, `hostile value ${index}`).toBe(false)
+			for (const [face, answer] of Object.entries(answers)) {
+				expect(answer, `hostile value ${index} on ${face}`).toBe(false)
+			}
 		}
+	})
+
+	it('admits a byte sequence sharing a buffer, which the bytes-side guards must not refuse', () => {
+		const buffer = new ArrayBuffer(8)
+		new Uint8Array(buffer).set([0x68, 0x69, 0x68, 0x69, 0x68, 0x69, 0x68, 0x69])
+		const view = new Uint8Array(buffer, 2, 4)
+
+		expect(isUTF8(view)).toBe(true)
+		expect(isWindows1252(view)).toBe(true)
+		expect(isUTF16LE(view)).toBe(true)
 	})
 })

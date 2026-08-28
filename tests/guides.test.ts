@@ -54,6 +54,7 @@ const INTERNAL: readonly string[] = Object.freeze([
 	'const BASE64_LOOKUP',
 	'const HEX_ALPHABET',
 	'const HEX_LOOKUP',
+	'const WINDOWS_1252_HIGH',
 ])
 /** Root-level files this package's guides link to. `readInventory` walks directories only. */
 const ROOT_FILES = Object.freeze(['AGENTS.md'])

@@ -1,31 +1,54 @@
 # Codec
 
 > The fleet's byte-to-text codings, as sound `encode` / `decode` / guard triples over `string` and
-> `Uint8Array` — RFC 4648 Base64, base64url, and hex — beside a `measure*` that reads a decoded
-> length off the text without decoding it. Zero runtime dependencies, no error type, no options, no
-> class. Source: [`src/core`](../src/core). Published through `@orkestrel/codec`.
+> `Uint8Array` — RFC 4648 Base64, base64url, and hex, beside the UTF-8, ISO-8859-1, Windows-1252,
+> and UTF-16LE charsets — and a `measure*` that reads a decoded length off the text without decoding
+> it. Zero runtime dependencies, no error type, no options, no class. Source:
+> [`src/core`](../src/core). Published through `@orkestrel/codec`.
 
 A coding is a spec-named, stateless mapping with one canonical spelling per input, written as an
 `encode*` that produces only the canonical form, a `decode*` that accepts exactly that form and
-answers `undefined` for everything else, and an `is*` guard that names the exact set its decoder
-accepts. Every function is pure ES: no `atob` / `btoa`, no `Buffer`, no `TextEncoder` /
+answers `undefined` for everything else, and an `is*` guard that names the exact set the partial
+direction accepts. Every function is pure ES: no `atob` / `btoa`, no `Buffer`, no `TextEncoder` /
 `TextDecoder`, no `node:*`, and no dependency on another `@orkestrel` package. Totality is
 implemented rather than caught: codec ships no error type, no options bag, no class, and no type of
 its own. It is not a formats package — it does not compress, frame a stream, escape a document, map
 values into a store, or read JSON.
 
-The families are fixed. `encode*` takes bytes and returns the canonical text, and cannot fail.
-`decode*` takes text and returns bytes or `undefined`, and never throws. `is*` takes an `unknown`
-and narrows it to `string`, and never throws. `measure*` takes text and returns the byte length its
-decoder would produce, or `undefined` for a text that decoder refuses — the name
-`@orkestrel/websocket` already carries for `measureWebSocketFrame`, which reads a frame's declared
-payload length off the buffer without buffering the payload.
+## The families
 
-A face's guard and its decoder are one grammar: the guard answers by asking the decoder, so the set
-the guard names and the set the decoder accepts cannot drift apart. A measure is the one family
-that cannot ask. Its reason to exist is that it never allocates the bytes, so it walks the grammar
-itself and the suite holds the two walks against each other — a measure that decodes has measured
-nothing.
+The families are fixed, and their direction belongs to the coding rather than to the package.
+`encode*` moves a value toward the coding's wire form and `decode*` moves it back toward the native
+one. For the RFC 4648 faces the wire form is text, so `encodeBase64` takes bytes and returns a
+string. For a charset the wire form is bytes, so `encodeUTF8` takes a string and returns bytes.
+Nothing else inverts with it: both faces keep the same two laws, each written in the direction its
+own `encode*` points.
+
+Which side can fail belongs to the coding too. An RFC 4648 `encode*` cannot fail, so its `decode*`
+carries every refusal. A charset can refuse on either side, and each one refuses where its
+specification leaves a gap: `encodeUTF8` refuses ill-formed text, `decodeUTF8` refuses a
+non-shortest spelling, `encodeLatin1` refuses a code unit past 0xFF, and `decodeLatin1` refuses
+nothing at all.
+
+`is*` takes an `unknown` and never throws. It attaches to its coding's **partial** direction,
+because a guard names the set some function refuses and a total function has no set to name. The
+RFC 4648 guards therefore sit on the text side and narrow to `string`. `isUTF8`, `isWindows1252`,
+and `isUTF16LE` sit on the bytes side and narrow to `Uint8Array`, because those decoders can refuse.
+`isLatin1` sits on the text side and narrows to `string`, because that coding's decoder is total and
+its encoder is the only side with a set to name. UTF-8's text side ships no guard at all:
+`text.isWellFormed()` is ECMA-262's own name for exactly the strings `encodeUTF8` accepts, so a
+guard there would be a wrapper adding nothing.
+
+`measure*` takes text and returns the byte length its decoder would produce, or `undefined` for a
+text that decoder refuses — the name `@orkestrel/websocket` already carries for
+`measureWebSocketFrame`, which reads a frame's declared payload length off the buffer without
+buffering the payload.
+
+A face's guard and its partial function are one grammar: the guard answers by asking that function,
+so the set the guard names and the set the function accepts cannot drift apart. A measure is the one
+family that cannot ask. Its reason to exist is that it never allocates the bytes, so it walks the
+grammar itself and the suite holds the two walks against each other — a measure that decodes has
+measured nothing.
 
 ## Surface
 
@@ -51,9 +74,9 @@ API, because publishing an alphabet invites hand-rolling the coding it belongs t
 ### Measures
 
 The decoded length a text carries, read off the text itself — from
-[`helpers.ts`](../src/core/helpers.ts), each beside the coding it measures. Every coding here has
-one: `measureBase64` reads the §4 face, `measureBase64URL` the §5 face, and `measureHex` the §8
-face.
+[`helpers.ts`](../src/core/helpers.ts), each beside the coding it measures. Every RFC 4648 face here
+has one: `measureBase64` reads the §4 face, `measureBase64URL` the §5 face, and `measureHex` the §8
+face. The charsets have none, for the reason the declared non-goals give.
 
 | Name               | Kind     | Signature                               | Behavior                                                                                                                                                |
 | ------------------ | -------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -61,15 +84,44 @@ face.
 | `measureBase64URL` | function | `(text: string) => number \| undefined` | The byte length `decodeBase64URL` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeBase64URL` refuses. |
 | `measureHex`       | function | `(text: string) => number \| undefined` | The byte length `decodeHex` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeHex` refuses.             |
 
+### Charsets
+
+The charset faces, whose wire form is bytes rather than text: the codings from
+[`helpers.ts`](../src/core/helpers.ts) and the guards from
+[`validators.ts`](../src/core/validators.ts). `UTF8` names the RFC 3629 coding, `Latin1` the
+ISO/IEC 8859-1 one, `Windows1252` the code page, and `UTF16LE` the little-endian UTF-16 form.
+`WINDOWS_1252_HIGH` — the written-out 0x80-0x9F table both Windows-1252 functions read — is module
+data rather than public API, for the reason the Base64 alphabets are.
+
+| Name                | Kind     | Signature                                                | Behavior                                                                                                                                                                               |
+| ------------------- | -------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `encodeUTF8`        | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Spells `text` in the RFC 3629 shortest form. `undefined` for exactly the ill-formed strings — a lone surrogate has no UTF-8 spelling.                                                  |
+| `decodeUTF8`        | function | `(bytes: Uint8Array) => string \| undefined`             | Reads back exactly what `encodeUTF8` writes. An overlong, an encoded surrogate, a code point past U+10FFFF, and a truncated sequence are `undefined`. A leading BOM is kept as U+FEFF. |
+| `isUTF8`            | function | `(value: unknown) => value is Uint8Array`                | True for exactly the byte sequences `decodeUTF8` answers text for. Total on any value: a string, a sibling view kind, or a proxy is false rather than a throw.                         |
+| `encodeLatin1`      | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Writes each code unit as the byte of the same value, which is the whole of ISO/IEC 8859-1. `undefined` when a code unit exceeds 0xFF.                                                  |
+| `decodeLatin1`      | function | `(bytes: Uint8Array) => string`                          | Reads each byte as the code point of the same value. Total: every byte names a character, so this decoder has no failure mode and no `undefined` return.                               |
+| `isLatin1`          | function | `(value: unknown) => value is string`                    | True for exactly the strings `encodeLatin1` answers bytes for. This coding's guard names the encode side, because its decoder refuses nothing. Total on any value.                     |
+| `encodeWindows1252` | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Inverts the mapping `decodeWindows1252` reads. `undefined` for a character outside the code page's image, every C1 control included.                                                   |
+| `decodeWindows1252` | function | `(bytes: Uint8Array) => string \| undefined`             | Identity for 0x00-0x7F and 0xA0-0xFF, and the written-out high table between them. Bytes 0x81, 0x8D, 0x8F, 0x90, and 0x9D name no character in the code page and are `undefined`.      |
+| `isWindows1252`     | function | `(value: unknown) => value is Uint8Array`                | True for exactly the byte sequences `decodeWindows1252` answers text for. Total on any value.                                                                                          |
+| `encodeUTF16LE`     | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Writes each code unit low byte first. `undefined` for exactly the ill-formed strings — an unpaired surrogate is no UTF-16 sequence.                                                    |
+| `decodeUTF16LE`     | function | `(bytes: Uint8Array) => string \| undefined`             | Reads two bytes per code unit, low byte first. An odd length and an unpaired surrogate are `undefined`. A leading FF FE is kept as U+FEFF.                                             |
+| `isUTF16LE`         | function | `(value: unknown) => value is Uint8Array`                | True for exactly the byte sequences `decodeUTF16LE` answers text for. Total on any value.                                                                                              |
+
 ## The laws
 
-Each face keeps two laws, and the suite drives both as sweeps rather than as spot vectors.
+Each face keeps two laws, and the suite drives both as sweeps rather than as spot vectors. Each law
+is written in the direction the face's own `encode*` points, so an RFC 4648 face reads it over bytes
+and text where a charset reads it over text and bytes.
 
-**The round-trip law.** `decode*(encode*(bytes))` deep-equals `bytes`, for every byte sequence, the
-empty one included.
+**The round-trip law.** `decode*(encode*(value))` deep-equals `value`, for every input the face
+admits, the empty one included. On the §4 face that reads `decodeBase64(encodeBase64(bytes))`; on
+the UTF-8 face it reads `decodeUTF8(encodeUTF8(text))`.
 
-**The canonical-form law.** `encode*(decode*(text)) === text`, for every text the face's guard
-admits.
+**The canonical-form law.** `encode*(decode*(wire))` returns `wire`, for every wire form the face's
+guard admits. On the §4 face the wire form is text and the law reads
+`encodeBase64(decodeBase64(text)) === text`; on the UTF-8 face it is bytes and the law reads
+`encodeUTF8(decodeUTF8(bytes))` deep-equals `bytes`.
 
 A measure keeps one law, over every string rather than over the admitted ones alone.
 
@@ -102,23 +154,81 @@ argument that refuses `'aa=='`: `'AB'` re-encodes as `'ab'`, so admitting it wou
 around the coding rather than part of it, and `'abc'` is `undefined` because a byte takes two
 digits.
 
+### The charset doors
+
+A charset closes its doors in the direction its own specification leaves open, so the refusals do
+not read alike across the four faces.
+
+UTF-8 closes on both sides. `encodeUTF8` refuses ill-formed text, which is exactly what
+`String.prototype.isWellFormed` reports false for — a lone surrogate is a UTF-16 artifact with no
+UTF-8 spelling, and inventing one is what the replacement character does. `decodeUTF8` refuses every
+non-canonical byte spelling: an overlong such as `C0 80` or `E0 80 80`, an encoded surrogate such as
+`ED A0 80`, a code point past U+10FFFF such as `F4 90 80 80`, a truncated sequence such as `E2 82`,
+a continuation byte with no lead, and a lead byte the grammar has no width for.
+
+ISO-8859-1 closes on one side only. Every byte names a character, so `decodeLatin1` is total and
+returns a bare `string`; the only door is `encodeLatin1`, which refuses a code unit past 0xFF.
+`isLatin1` guards that door because it is the only one there is.
+
+Windows-1252 closes where the code page itself stops. Bytes 0x81, 0x8D, 0x8F, 0x90, and 0x9D are
+undefined slots, so `decodeWindows1252` refuses them. The defined mapping is a bijection — no
+character is reachable from two bytes — so `encodeWindows1252` is its exact inverse and refuses
+every character outside the image, which includes all of U+0080-U+009F because no defined slot
+reaches a C1 control.
+
+UTF-16LE closes on the two things the wire form can get wrong: an odd length, which completes no
+code unit, and a surrogate the byte stream leaves unpaired — a lead with nothing after it, a lead
+followed by a BMP code unit, and a trail with no lead alike.
+
+### The BOM stance
+
+A byte order mark is data here, not a signal. `EF BB BF` decodes to U+FEFF on the UTF-8 face and
+`FF FE` decodes to U+FEFF on the UTF-16LE face, in leading position exactly as anywhere else, and
+each encodes back to those bytes. The round-trip law forces it: a decoder that dropped a leading BOM
+would answer a text whose re-encoding is shorter than the bytes it was given, and no amount of
+documentation makes that a round trip. A consumer that wants the mark removed removes it, the same
+way a consumer wanting lenient Base64 normalizes first.
+
+### Where this package parts from WHATWG
+
+The platform's own codings are the obvious oracle for these faces, and they disagree with this
+package in ways worth naming rather than discovering.
+
+- **`TextDecoder('latin1')` is not ISO-8859-1.** The WHATWG `latin1` label is an alias for
+  windows-1252: the decoder reports `encoding === 'windows-1252'` and answers U+20AC for the byte
+  0x80. `decodeLatin1` answers U+0080, because ISO-8859-1 is the identity. The two codings agree
+  outside 0x80-0x9F and part company across it.
+- **The WHATWG windows-1252 index defines all 256 entries.** It maps each undefined slot to its own
+  C1 control, so `TextDecoder('windows-1252')` answers U+0081 for the byte 0x81 where
+  `decodeWindows1252` answers `undefined`. Setting `fatal: true` does not change that. The suite
+  therefore holds the oracle to the bytes it agrees on and pins those slots directly.
+- **A fatal `TextDecoder` strips a leading BOM by default.** `ignoreBOM: true` is what keeps it, and
+  this package keeps it always. That is the same divergence stated as the BOM stance, seen from the
+  platform's side.
+
 ## Membership
 
 A coding belongs here when it is:
 
 - **stateless and spec-named** — a mapping between bytes and text fixed by a published
   specification, carrying no configuration and no instance;
-- **single-spelled** — exactly one canonical text per input;
-- **guard-decidable** — membership in the accepted set is decidable from the text alone, so an
+- **single-spelled** — exactly one canonical wire form per input;
+- **guard-decidable** — membership in the accepted set is decidable from the value alone, so an
   `is*` can name it;
 - **both-lawed** — the round-trip law and the canonical-form law hold as written;
 - **wanted** — a real consumer in the fleet needs it now.
 
+The charsets meet that bar in the inverted direction and nothing else changes. Each is fixed by a
+published specification, carries no configuration, and spells one canonical byte sequence per text.
+Latin-1 is the case worth reading twice: its decoder refuses nothing, so its guard names its encode
+side, and the bar is met by the direction that has a set to name rather than by the one that does
+not.
+
 A measure belongs here when the coding it measures is already here, the sound-triple law holds as
 written, and a consumer needs the length before the bytes. It names no grammar of its own, so it
 ships beside its coding rather than as a face. `measureBase64`, `measureBase64URL`, and
-`measureHex` each meet that bar, so every coding this package ships is measurable and a later
-coding brings the question with it.
+`measureHex` each meet that bar. A charset raises the question rather than answering it: the only
+measure a charset would want is `measureUTF8`, and that one waits.
 
 A transform that carries state between calls, that takes a parameter changing what it produces,
 that reads a document grammar rather than a byte-to-text mapping, or that encodes a caller's policy
@@ -129,12 +239,16 @@ of this package.
 
 ## Declared non-goals
 
-- **No lenient doors.** No whitespace stripping, no optional padding, no permissive alphabet, and
-  no option to relax any of it.
+- **No lenient doors.** No whitespace stripping, no optional padding, no permissive alphabet, no BOM
+  discarding, no replacement character, and no option to relax any of it.
 - **No error type.** A decoder reports failure as `undefined` and a guard reports it as `false`.
   Nothing here throws, so there is nothing to catch and no code to branch on.
-- **Not yet, and behind the bar:** UTF-8 text codings and charset decoders. Each is a candidate for
-  a later wave, and each has to meet the membership bar with a real consumer before it lands.
+- **Not yet, and behind the bar:** `measureUTF8`. It waits on whether `@orkestrel/scaffold`
+  converges on this package, because scaffold already carries `bytesToHex` and `computeBytes`, its
+  own UTF-8 byte counter — and `computeBytes` counts an unpaired surrogate as the three bytes
+  `TextEncoder` writes for the replacement character, where `encodeUTF8` refuses that text outright.
+  A `measureUTF8` landing before that ruling would either break the sound-triple law or ship a
+  second answer beside scaffold's. Neither is worth a face.
 - **Never:** compression, stream framing, document escaping, value-to-store mapping, and JSON.
   Those are other packages' work.
 
@@ -224,6 +338,25 @@ if (decoded !== undefined) encodeBase64(decoded) // === text
   named measures on each face, the canonical refusals, the Base64 alphabets read against the
   specification in both directions, the hex alphabet read against the language's own radix
   conversion in both directions, and guard totality against hostile values.
+
+  The charset faces run the same two laws in their own direction. The round-trip law walks a
+  well-formed text population built from characters spanning every UTF-8 width threshold, the BOM,
+  the Latin-1 ceiling, and both Windows-1252 bands, and pins each width threshold at the byte length
+  the specification fixes. The canonical-form law walks the exhaustive two-byte space on all four
+  faces, re-encoding every admitted pair to itself, and reads the Windows-1252 defined mapping as a
+  bijection and the Latin-1 mapping as the identity bijection. Beside the sweeps sit the written-out
+  refusal rows — the overlongs, the encoded surrogates, the out-of-range and truncated sequences,
+  the undefined code-page slots, the odd length, and the unpaired surrogates — each pinned against
+  both its decoder and its guard.
+
+  The platform's own codings run as oracles over the populations they agree on, each one probed
+  before a sweep was written to it. `decodeUTF8` and `decodeUTF16LE` are held against a fatal
+  `TextDecoder` carrying `ignoreBOM` over the whole two-byte space, `encodeUTF8` against
+  `TextEncoder` over the well-formed texts, and `decodeWindows1252` against the WHATWG index over
+  the bytes that index and this coding both define. `decodeLatin1` is held against
+  `String.fromCharCode` rather than against the `latin1` label, and one assertion pins the label's
+  disagreement to the 0x80-0x9F band so a later reader cannot quietly adopt it as the oracle.
+
 - [`tests/policy.test.ts`](../tests/policy.test.ts) — repository coding law: source placement,
   exports, and syntax.
 - [`tests/config.test.ts`](../tests/config.test.ts) — the root configuration's aliases, projects,
