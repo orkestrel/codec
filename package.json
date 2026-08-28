@@ -1,15 +1,21 @@
 {
 	"name": "@orkestrel/codec",
 	"version": "0.0.1",
-	"description": "Spec-named byte-to-text codings as sound encode/decode/guard triples — RFC 4648 Base64 and base64url, pure ES, total, and canonical in both directions.",
+	"description": "Spec-named byte-to-text codings and their measures as sound encode/decode/guard triples — RFC 4648 Base64, base64url, and hex, UTF-8, Latin-1, Windows-1252, and UTF-16LE — pure ES and canonical in both directions.",
 	"keywords": [
 		"base64",
 		"base64url",
 		"bytes",
+		"charset",
 		"codec",
 		"decode",
 		"encode",
-		"rfc4648"
+		"hex",
+		"latin1",
+		"rfc4648",
+		"utf8",
+		"utf16",
+		"windows1252"
 	],
 	"homepage": "https://github.com/orkestrel/codec#readme",
 	"bugs": "https://github.com/orkestrel/codec/issues",
