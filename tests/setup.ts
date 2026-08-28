@@ -132,17 +132,45 @@ for (let index = 0; index < HEX_SWEEP_CHARACTERS.length ** 4; index += 1) {
 /** The hex sweep population, deduplicated. */
 export const HEX_SWEEP: readonly string[] = [...HEX_SWEEP_TEXTS]
 
-/** Named measure vectors: one §4 text and the decoded byte length it owes, or `undefined`. */
+/**
+ * Named measure vectors: one text and the decoded byte length each Base64 face owes it.
+ *
+ * The table carries a column per face, the way {@link MEMBERSHIP} does, because the padding a text
+ * carries moves the `standard` and `url` answers in opposite directions: `'aGk='` measures on §4
+ * and is refused on §5, and `'aGk'` measures on §5 and is refused on §4. A refused text owes
+ * `undefined`.
+ */
 export const MEASURES: ReadonlyArray<{
+	readonly text: string
+	readonly standard: number | undefined
+	readonly url: number | undefined
+	readonly reason: string
+}> = [
+	{ text: '', standard: 0, url: 0, reason: 'the empty text' },
+	{ text: 'aGk=', standard: 2, url: undefined, reason: 'one pad character, which §5 has none of' },
+	{ text: 'aGk', standard: undefined, url: 2, reason: 'no padding, which §4 requires' },
+	{ text: 'AQID', standard: 3, url: 3, reason: 'a full group both faces spell alike' },
+	{ text: 'aa==', standard: undefined, url: undefined, reason: 'a non-zero unused trailing bit' },
+	{ text: 'aa', standard: undefined, url: undefined, reason: 'that bit without the padding' },
+	{
+		text: 'A',
+		standard: undefined,
+		url: undefined,
+		reason: 'a length off the group boundary no padding completes',
+	},
+]
+
+/** Named hex measure vectors: one §8 text and the decoded byte length it owes, or `undefined`. */
+export const HEX_MEASURES: ReadonlyArray<{
 	readonly text: string
 	readonly length: number | undefined
 	readonly reason: string
 }> = [
 	{ text: '', length: 0, reason: 'the empty text' },
-	{ text: 'aGk=', length: 2, reason: 'one pad character' },
-	{ text: 'AQID', length: 3, reason: 'a full group' },
-	{ text: 'aa==', length: undefined, reason: 'a non-zero unused trailing bit' },
-	{ text: 'A', length: undefined, reason: 'a length off the group boundary' },
+	{ text: 'ab', length: 1, reason: 'one byte' },
+	{ text: 'abcd', length: 2, reason: 'two bytes' },
+	{ text: 'AB', length: undefined, reason: 'uppercase, which re-encodes as ab' },
+	{ text: 'abc', length: undefined, reason: 'an odd length' },
 ]
 
 /** Values no guard may narrow, none of which is a string. */
@@ -198,3 +226,17 @@ for (let index = 0; index < SWEEP_CHARACTERS.length ** 4; index += 1) {
 
 /** The sweep population, deduplicated. */
 export const SWEEP: readonly string[] = [...SWEEP_TEXTS]
+
+/** Every text the Base64 measure law sweeps: the sweep population beside both written-out tables. */
+export const MEASURE_TEXTS: readonly string[] = [
+	...SWEEP,
+	...MEMBERSHIP.map((row) => row.text),
+	...MEASURES.map((row) => row.text),
+]
+
+/** Every text the hex measure law sweeps: the hex sweep population beside both written-out tables. */
+export const HEX_MEASURE_TEXTS: readonly string[] = [
+	...HEX_SWEEP,
+	...HEX_MEMBERSHIP.map((row) => row.text),
+	...HEX_MEASURES.map((row) => row.text),
+]

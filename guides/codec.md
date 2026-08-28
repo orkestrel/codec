@@ -50,12 +50,16 @@ API, because publishing an alphabet invites hand-rolling the coding it belongs t
 
 ### Measures
 
-The decoded length a §4 text carries, read off the text itself — from
-[`helpers.ts`](../src/core/helpers.ts), beside the coding it measures.
+The decoded length a text carries, read off the text itself — from
+[`helpers.ts`](../src/core/helpers.ts), each beside the coding it measures. Every coding here has
+one: `measureBase64` reads the §4 face, `measureBase64URL` the §5 face, and `measureHex` the §8
+face.
 
-| Name            | Kind     | Signature                               | Behavior                                                                                                                                          |
-| --------------- | -------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `measureBase64` | function | `(text: string) => number \| undefined` | The byte length `decodeBase64` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeBase64` refuses. |
+| Name               | Kind     | Signature                               | Behavior                                                                                                                                                |
+| ------------------ | -------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `measureBase64`    | function | `(text: string) => number \| undefined` | The byte length `decodeBase64` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeBase64` refuses.       |
+| `measureBase64URL` | function | `(text: string) => number \| undefined` | The byte length `decodeBase64URL` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeBase64URL` refuses. |
+| `measureHex`       | function | `(text: string) => number \| undefined` | The byte length `decodeHex` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeHex` refuses.             |
 
 ## The laws
 
@@ -70,9 +74,10 @@ admits.
 A measure keeps one law, over every string rather than over the admitted ones alone.
 
 **The sound-triple law.** `measure*(text) === decode*(text)?.length`. An admitted text pins the
-length; a refused text pins `undefined` on both sides. The suite drives it across the Base64 sweep
-population, the membership rows, the measure rows, and the octet-prefix encodings, so a divergence
-between the two walks reddens on the texts those populations reach.
+length; a refused text pins `undefined` on both sides. The suite drives it for `measureBase64`,
+`measureBase64URL`, and `measureHex` alike, each against its own decoder across that face's sweep
+population, membership rows, measure rows, and octet-prefix encodings, so a divergence between the
+two walks reddens on the texts those populations reach.
 
 The canonical-form law is the one that does the work. It says a decoder may accept only the
 spelling its own encoder produces, which rules out every lenient door at once: the wrong alphabet
@@ -111,8 +116,9 @@ A coding belongs here when it is:
 
 A measure belongs here when the coding it measures is already here, the sound-triple law holds as
 written, and a consumer needs the length before the bytes. It names no grammar of its own, so it
-ships beside its coding rather than as a face. `measureBase64` meets that bar; the §5 and §8
-measures wait on the consumer the bar asks for.
+ships beside its coding rather than as a face. `measureBase64`, `measureBase64URL`, and
+`measureHex` each meet that bar, so every coding this package ships is measurable and a later
+coding brings the question with it.
 
 A transform that carries state between calls, that takes a parameter changing what it produces,
 that reads a document grammar rather than a byte-to-text mapping, or that encodes a caller's policy
@@ -209,13 +215,15 @@ if (decoded !== undefined) encodeBase64(decoded) // === text
   residue prefixes beside its empty, single-byte, and byte-pair walks. The canonical-form law runs an
   exhaustive walk over short texts spanning the Base64 alphabets and a second walk over short hex
   texts carrying uppercase and foreign characters, re-encoding every admitted text to itself. The
-  sound-triple law runs `measureBase64` against `decodeBase64` over the Base64 sweep population,
-  every Base64 membership row, and every canonical encoding of an octet prefix. Beside the sweeps
-  sit the written-out membership rows that bind each guard to its decoder, the hex rows that pin
-  `isHex` and `decodeHex` to the same answer, the named vectors, the named measures, the canonical
-  refusals, the Base64 alphabets read against the specification in both directions, the hex
-  alphabet read against the language's own radix conversion in both directions, and guard totality
-  against hostile values.
+  sound-triple law runs `measureBase64` against `decodeBase64` and `measureBase64URL` against
+  `decodeBase64URL` over the Base64 sweep population and the written-out Base64 membership and
+  measure rows, runs `measureHex` against `decodeHex` over the hex sweep population and the
+  written-out hex rows, and holds every measure against every canonical encoding of an octet
+  prefix. Beside the sweeps sit the written-out membership rows that bind each guard to its
+  decoder, the hex rows that pin `isHex` and `decodeHex` to the same answer, the named vectors, the
+  named measures on each face, the canonical refusals, the Base64 alphabets read against the
+  specification in both directions, the hex alphabet read against the language's own radix
+  conversion in both directions, and guard totality against hostile values.
 - [`tests/policy.test.ts`](../tests/policy.test.ts) — repository coding law: source placement,
   exports, and syntax.
 - [`tests/config.test.ts`](../tests/config.test.ts) — the root configuration's aliases, projects,

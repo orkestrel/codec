@@ -190,9 +190,12 @@ export function decodeHex(text: string): Uint8Array<ArrayBuffer> | undefined {
 //
 // A measure answers the decoded length of a text its coding admits, and `undefined` for a text the
 // coding refuses. It walks the same grammar its decoder does and allocates no output buffer, which
-// is the whole reason it exists: a measure that decodes has measured nothing. `measureBase64`
-// therefore repeats the §4 walk rather than calling `decodeBase64`, and the law sweep in
-// tests/src/core/helpers.test.ts holds the two independent walks against each other.
+// is the whole reason it exists: a measure that decodes has measured nothing. `measureBase64` and
+// `measureHex` therefore repeat the §4 and §8 walks rather than calling their decoders, and
+// `measureBase64URL` carries the §5 substitution over `measureBase64` exactly as
+// `decodeBase64URL` carries it over `decodeBase64`, so no measure reaches a decoder. The law
+// sweeps in tests/src/core/helpers.test.ts hold each measure against its decoder, two independent
+// walks per face.
 
 /**
  * Measures the byte length canonical standard Base64 text decodes to.
@@ -228,4 +231,60 @@ export function measureBase64(text: string): number | undefined {
 		if (tail === 1 && (third & 0x03) !== 0) return undefined
 	}
 	return (text.length / 4) * 3 - padding
+}
+
+/**
+ * Measures the byte length canonical base64url text decodes to.
+ *
+ * @remarks
+ * Keeps the sound triple `measureBase64URL(text) === decodeBase64URL(text)?.length` for every
+ * string, walking the full RFC 4648 §5 grammar — the `+`, `/`, and `=` the url face refuses
+ * outright, the length residue padding completes, the alphabet membership, and the unused trailing
+ * bits — without allocating the decoded bytes. That is its reason to exist, so it reads the §5
+ * face the way {@link decodeBase64URL} reads it and lands on {@link measureBase64} rather than on
+ * a decoder. `undefined` is the only failure mode; nothing here throws.
+ *
+ * @param text - The text to measure.
+ * @returns The decoded byte length, or `undefined` when `text` is not canonical §5 base64url.
+ *
+ * @example
+ * ```ts
+ * measureBase64URL('aGk') // 2
+ * measureBase64URL('aa') // undefined
+ * ```
+ */
+export function measureBase64URL(text: string): number | undefined {
+	if (text.includes('+') || text.includes('/') || text.includes('=')) return undefined
+	const standard = text.replaceAll('-', '+').replaceAll('_', '/')
+	const remainder = standard.length % 4
+	return measureBase64(remainder === 0 ? standard : standard + '='.repeat(4 - remainder))
+}
+
+/**
+ * Measures the byte length canonical lowercase hex text decodes to.
+ *
+ * @remarks
+ * Keeps the sound triple `measureHex(text) === decodeHex(text)?.length` for every string, walking
+ * the full RFC 4648 §8 grammar — the even length and the lowercase alphabet membership, which
+ * holds no uppercase digit — and answering half the length only after that walk admits the text,
+ * without allocating the decoded bytes. That is its reason to exist, so it repeats the walk rather
+ * than asking {@link decodeHex}. `undefined` is the only failure mode; nothing here throws.
+ *
+ * @param text - The text to measure.
+ * @returns The decoded byte length, or `undefined` when `text` is not canonical lowercase hex.
+ *
+ * @example
+ * ```ts
+ * measureHex('abcd') // 2
+ * measureHex('AB') // undefined
+ * ```
+ */
+export function measureHex(text: string): number | undefined {
+	if (text.length % 2 !== 0) return undefined
+	for (let index = 0; index < text.length; index += 2) {
+		const high = HEX_LOOKUP[text.charAt(index)]
+		const low = HEX_LOOKUP[text.charAt(index + 1)]
+		if (high === undefined || low === undefined) return undefined
+	}
+	return text.length / 2
 }

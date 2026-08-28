@@ -11,12 +11,17 @@ import {
 	isBase64URL,
 	isHex,
 	measureBase64,
+	measureBase64URL,
+	measureHex,
 } from '@src/core'
 import {
 	FOREIGN,
+	HEX_MEASURE_TEXTS,
+	HEX_MEASURES,
 	HEX_MEMBERSHIP,
 	HEX_OCTETS,
 	HEX_SWEEP,
+	MEASURE_TEXTS,
 	MEASURES,
 	MEMBERSHIP,
 	OCTETS,
@@ -178,30 +183,56 @@ describe('the iff law — isHex names exactly what decodeHex accepts', () => {
 })
 
 describe('the measure law — a measure answers the length its decoder would allocate', () => {
-	// Two independent walks over the same §4 grammar: `measureBase64` computes the length from the
-	// text and `decodeBase64` reports the length of bytes it actually wrote. Neither asks the other,
-	// so a grammar rule one of them stops enforcing shows up here as a disagreement.
+	// Two independent walks per face: the measure computes the length from the text and the decoder
+	// reports the length of bytes it actually wrote. Neither asks the other, so a grammar rule one
+	// of them stops enforcing shows up here as a disagreement.
 	it('agrees with decodeBase64 on every sweep text', () => {
-		const texts = [...SWEEP, ...MEMBERSHIP.map((row) => row.text)]
-		const drift = texts.filter((text) => measureBase64(text) !== decodeBase64(text)?.length)
+		const drift = MEASURE_TEXTS.filter((text) => measureBase64(text) !== decodeBase64(text)?.length)
 
-		expect(texts.length).toBeGreaterThan(0)
+		expect(MEASURE_TEXTS.length).toBeGreaterThan(0)
 		expect(drift).toEqual([])
 	})
 
-	it('agrees with decodeBase64 on every canonical encoding of a byte prefix', () => {
+	it('agrees with decodeBase64URL on every sweep text', () => {
+		const drift = MEASURE_TEXTS.filter(
+			(text) => measureBase64URL(text) !== decodeBase64URL(text)?.length,
+		)
+
+		expect(MEASURE_TEXTS.length).toBeGreaterThan(0)
+		expect(drift).toEqual([])
+	})
+
+	it('agrees with decodeHex on every hex sweep text', () => {
+		const drift = HEX_MEASURE_TEXTS.filter((text) => measureHex(text) !== decodeHex(text)?.length)
+
+		expect(HEX_MEASURE_TEXTS.length).toBeGreaterThan(0)
+		expect(drift).toEqual([])
+	})
+
+	it('agrees with every decoder on every canonical encoding of a byte prefix', () => {
 		const drift: string[] = []
 		for (let length = 0; length <= OCTETS.length; length += 1) {
-			const text = encodeBase64(OCTETS.slice(0, length))
-			if (measureBase64(text) !== length) drift.push(`length ${length}`)
+			const bytes = OCTETS.slice(0, length)
+			if (measureBase64(encodeBase64(bytes)) !== length) drift.push(`§4 length ${length}`)
+			if (measureBase64URL(encodeBase64URL(bytes)) !== length) drift.push(`§5 length ${length}`)
+			if (measureHex(encodeHex(bytes)) !== length) drift.push(`§8 length ${length}`)
 		}
 		expect(drift).toEqual([])
 	})
 
 	for (const row of MEASURES) {
-		it(`measures ${JSON.stringify(row.text)} — ${row.reason}`, () => {
-			expect(measureBase64(row.text)).toBe(row.length)
+		it(`measures ${JSON.stringify(row.text)} in both Base64 faces — ${row.reason}`, () => {
+			expect(measureBase64(row.text)).toBe(row.standard)
+			expect(measureBase64URL(row.text)).toBe(row.url)
 			expect(measureBase64(row.text)).toBe(decodeBase64(row.text)?.length)
+			expect(measureBase64URL(row.text)).toBe(decodeBase64URL(row.text)?.length)
+		})
+	}
+
+	for (const row of HEX_MEASURES) {
+		it(`measures ${JSON.stringify(row.text)} in the hex face — ${row.reason}`, () => {
+			expect(measureHex(row.text)).toBe(row.length)
+			expect(measureHex(row.text)).toBe(decodeHex(row.text)?.length)
 		})
 	}
 })
