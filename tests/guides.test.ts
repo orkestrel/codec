@@ -7,19 +7,19 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
+	computeSymbolKey,
 	createGuide,
 	createSource,
 	createSourceManager,
+	extractFenceImports,
 	extractSourceLines,
-	fenceImports,
 	findMissing,
+	findMissingSymbols,
 	findUnexampled,
 	findUnlisted,
 	isExternalLink,
-	missingSymbols,
 	parseManifest,
 	resolveLink,
-	symbolKey,
 } from '@orkestrel/guide'
 import { requireValue } from '@orkestrel/test'
 import { readInventory } from '@orkestrel/test/server'
@@ -56,7 +56,7 @@ const ROOT = '@orkestrel/codec'
 /** Each import specifier this package's own guides may resolve against. */
 const MODULES = Object.freeze({ '@orkestrel/codec': 'src/core' })
 /**
- * Declarations deliberately kept out of the barrel, as `symbolKey` strings.
+ * Declarations deliberately kept out of the barrel, as `computeSymbolKey` strings.
  *
  * The alphabet and its reverse lookup are module data the codings read, not public API:
  * publishing an alphabet invites hand-rolling the coding it belongs to, which is the one thing
@@ -119,25 +119,25 @@ for (const entry of manifest) {
 			expect(guide.surface().length).toBeGreaterThan(0)
 		})
 		it('re-exports every direct declaration that is not named internal', () => {
-			const stranded = missingSymbols(source.exports(), source.surface())
+			const stranded = findMissingSymbols(source.exports(), source.surface())
 			expect(stranded.filter((key) => !INTERNAL.includes(key))).toEqual([])
 		})
 		it('names no symbol internal that the barrel already exports', () => {
-			const stranded = missingSymbols(source.exports(), source.surface())
+			const stranded = findMissingSymbols(source.exports(), source.surface())
 			expect(INTERNAL.filter((key) => !stranded.includes(key))).toEqual([])
 		})
 		it('re-exports only direct declarations', () => {
-			expect(missingSymbols(source.surface(), source.exports())).toEqual([])
+			expect(findMissingSymbols(source.surface(), source.exports())).toEqual([])
 		})
 		it('documents every barrel export', () => {
-			expect(missingSymbols(source.surface(), guide.surface())).toEqual([])
+			expect(findMissingSymbols(source.surface(), guide.surface())).toEqual([])
 		})
 		it('documents only barrel exports', () => {
-			expect(missingSymbols(guide.surface(), source.surface())).toEqual([])
+			expect(findMissingSymbols(guide.surface(), source.surface())).toEqual([])
 		})
 
 		it('exposes no hidden module-scope declarations', () => {
-			expect(source.hidden().map(symbolKey)).toEqual([])
+			expect(source.hidden().map(computeSymbolKey)).toEqual([])
 		})
 
 		for (const group of guide.methods()) {
@@ -174,7 +174,7 @@ for (const entry of manifest) {
 			expect(findUnexampled(names, fences, source.examples())).toEqual([])
 		})
 
-		// The membership rule is `fenceImports`'s own grammar read off Guide's comment-aware source
+		// The membership rule is `extractFenceImports`'s own grammar read off Guide's comment-aware source
 		// projection: a mapped specifier's bindings compare against that face's barrel surface, a
 		// repository alias and an unmapped true subpath of the root are refused because a public
 		// guide example must import through a published specifier, and a foreign package stays
@@ -186,7 +186,7 @@ for (const entry of manifest) {
 				const projected = extractSourceLines(fence.code)
 					.map((line) => line.code)
 					.join('\n')
-				for (const statement of fenceImports(projected)) {
+				for (const statement of extractFenceImports(projected)) {
 					const specifier = statement.specifier
 					if (specifier.startsWith('@src/') || specifier.startsWith('@app/')) {
 						refused.push(specifier)
