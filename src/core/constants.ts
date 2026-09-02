@@ -5,11 +5,13 @@
 // policy sweep rejects. Entry `c` of the table is the index of `c` in BASE64_ALPHABET, and the
 // alphabet sweep in tests/src/core/helpers.test.ts fails on any single-entry disagreement.
 
-/** The RFC 4648 §4 alphabet, index-ordered; {@link BASE64_LOOKUP} is transcribed against it. */
+/**
+ * Holds the RFC 4648 §4 alphabet, index-ordered; {@link BASE64_LOOKUP} is transcribed against it.
+ */
 export const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 /**
- * Base64 character to 6-bit value lookup, transcribed against {@link BASE64_ALPHABET}; the
+ * Maps each Base64 character to its 6-bit value, transcribed against {@link BASE64_ALPHABET}; the
  * alphabet sweep in tests/src/core/helpers.test.ts fails on any single-entry disagreement.
  */
 export const BASE64_LOOKUP: Readonly<Record<string, number>> = Object.freeze({
@@ -88,12 +90,15 @@ export const BASE64_LOOKUP: Readonly<Record<string, number>> = Object.freeze({
 // single-entry disagreement. The table holds no uppercase entry, which is what makes `decodeHex`
 // refuse `'AB'`.
 
-/** The RFC 4648 §8 alphabet, lowercase and index-ordered; {@link HEX_LOOKUP} is transcribed against it. */
+/**
+ * Holds the RFC 4648 §8 alphabet, lowercase and index-ordered; {@link HEX_LOOKUP} is transcribed
+ * against it.
+ */
 export const HEX_ALPHABET = '0123456789abcdef'
 
 /**
- * Hex character to 4-bit value lookup, transcribed against {@link HEX_ALPHABET}; the oracle sweep
- * in tests/src/core/helpers.test.ts fails on any single-entry disagreement.
+ * Maps each hex character to its 4-bit value, transcribed against {@link HEX_ALPHABET}; the oracle
+ * sweep in tests/src/core/helpers.test.ts fails on any single-entry disagreement.
  */
 export const HEX_LOOKUP: Readonly<Record<string, number>> = Object.freeze({
 	'0': 0,
@@ -123,8 +128,8 @@ export const HEX_LOOKUP: Readonly<Record<string, number>> = Object.freeze({
 // sweep in tests/src/core/helpers.test.ts fails on any single-entry disagreement.
 
 /**
- * Windows-1252 high-band byte to code point lookup, keyed by the byte and transcribed from the
- * WHATWG Encoding index for the code page.
+ * Maps a Windows-1252 high-band byte to its code point, transcribed from the WHATWG Encoding
+ * index for the code page.
  *
  * @remarks
  * The table covers 0x80-0x9F alone, because every other byte in the code page is the identity.
