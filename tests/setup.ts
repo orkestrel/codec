@@ -67,13 +67,18 @@ export const MEMBERSHIP: ReadonlyArray<{
 	{ text: 'AAB=', standard: false, url: false, reason: 'the one-pad unused bit 0x01' },
 	{ text: 'AA==', standard: true, url: false, reason: 'the padded two-character residue' },
 	{ text: 'AA', standard: false, url: true, reason: 'the unpadded two-character residue' },
-	{ text: 'AQ ID', standard: false, url: false, reason: 'whitespace' },
+	{ text: 'AQ D', standard: false, url: false, reason: 'whitespace' },
 	{ text: 'A', standard: false, url: false, reason: 'a length off the group boundary' },
 	{ text: 'AQID=', standard: false, url: false, reason: 'padding off the group boundary' },
 	{ text: '====', standard: false, url: false, reason: 'padding with no data' },
 	{ text: 'A===', standard: false, url: false, reason: 'padding wider than the group allows' },
 	{ text: 'AA=A', standard: false, url: false, reason: 'padding inside the group' },
-	{ text: 'AAAA\n', standard: false, url: false, reason: 'a trailing newline' },
+	{
+		text: 'AAAA\n',
+		standard: false,
+		url: false,
+		reason: 'a trailing newline, refused at the length residue',
+	},
 ]
 
 /**
@@ -249,7 +254,7 @@ const MUTANT_ROUNDS = 8
 /** The xorshift32 seed, constant so the population never moves. */
 const MUTANT_SEED = 0x1252c0de
 
-// The draws per mutant are the mutation kind, the position, and the character, over every base.
+// The draws per mutant are the mutation, the position, and the character, over every base.
 const MUTANT_DRAWS: number[] = []
 let mutantState = MUTANT_SEED
 for (let index = 0; index < MUTANT_PREFIX * 3 * MUTANT_ROUNDS * 3; index += 1) {
@@ -267,14 +272,15 @@ for (let length = 1; length <= MUTANT_PREFIX; length += 1) {
 	for (const base of [encodeBase64(bytes), encodeBase64URL(bytes), encodeHex(bytes)]) {
 		MUTANT_SET.add(base)
 		for (let round = 0; round < MUTANT_ROUNDS; round += 1) {
-			const kind = (MUTANT_DRAWS[mutantCursor] ?? 0) % 3
+			const mutation = (MUTANT_DRAWS[mutantCursor] ?? 0) % 3
 			const position = (MUTANT_DRAWS[mutantCursor + 1] ?? 0) % base.length
 			const character = MUTANT_CHARACTERS.charAt(
 				(MUTANT_DRAWS[mutantCursor + 2] ?? 0) % MUTANT_CHARACTERS.length,
 			)
 			mutantCursor += 3
-			if (kind === 0) MUTANT_SET.add(base.slice(0, position) + character + base.slice(position + 1))
-			else if (kind === 1) {
+			if (mutation === 0)
+				MUTANT_SET.add(base.slice(0, position) + character + base.slice(position + 1))
+			else if (mutation === 1) {
 				MUTANT_SET.add(base.slice(0, position) + character + base.slice(position))
 			} else MUTANT_SET.add(base.slice(0, position))
 		}

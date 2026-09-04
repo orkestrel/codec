@@ -273,7 +273,7 @@ describe('flagship fences', () => {
 		expect(decodeBase64('aa==')).toBeUndefined()
 		expect(decodeBase64('aQ==')).toStrictEqual(new Uint8Array([105]))
 		expect(encodeBase64(new Uint8Array([105]))).toBe('aQ==')
-		expect(decodeBase64('AQ ID')).toBeUndefined()
+		expect(decodeBase64('AQ D')).toBeUndefined()
 		expect(decodeBase64('A')).toBeUndefined()
 		expect(decodeBase64('AQID=')).toBeUndefined()
 		expect(decodeBase64('-_-_')).toBeUndefined()
