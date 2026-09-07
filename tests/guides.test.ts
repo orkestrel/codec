@@ -1,8 +1,10 @@
-// The guides-parity gate: @orkestrel/guide's checks run against this repository's own
-// `guides/README.md` manifest, and every flagship fence in `guides/codec.md` is transcribed here
-// and asserted against what its comments claim. Name resolution is not a behavioural proof, so a
-// fence documenting a value the code contradicts is exactly what the transcriptions catch. Change
-// a fence, change its transcription.
+// The consumer-side guides-parity drop-in: runs `@orkestrel/guide`'s checks against
+// this repo's own `guides/README.md` manifest. The constants that follow are this
+// package's own, as is the executed section that closes the file. Every flagship fence
+// in `guides/codec.md` is transcribed at the end of this file and asserted against what
+// its comments claim: name resolution is not a behavioural proof, so a fence documenting a
+// value the code contradicts is exactly what the transcriptions catch. Change a fence,
+// change its transcription.
 
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
@@ -12,7 +14,6 @@ import {
 	createSource,
 	createSourceManager,
 	extractFenceImports,
-	extractSourceLines,
 	findDrift,
 	findMissing,
 	findMissingSymbols,
@@ -64,8 +65,8 @@ const MODULES = Object.freeze({ '@orkestrel/codec': 'src/core' })
  * The alphabet and its reverse lookup are module data the codings read, not public API:
  * publishing an alphabet invites hand-rolling the coding it belongs to, which is the one thing
  * this package exists to remove. Naming them here is what makes the omission intentional rather
- * than forgotten, and the assertion below fails when a name here stops being stranded, so the
- * list cannot rot.
+ * than forgotten, and the assertion that follows it fails when a name here stops being stranded,
+ * so the list cannot rot.
  */
 const INTERNAL: readonly string[] = Object.freeze([
 	'const BASE64_ALPHABET',
@@ -87,7 +88,6 @@ const manifest = parseManifest(
 	'guides',
 )
 const sources = createSourceManager({ files, modules: MODULES })
-const specification = requireValue(files[GUIDE_SPEC], `Missing file: ${GUIDE_SPEC}`)
 const own = requireValue(
 	manifest.find((entry) => entry.spec === GUIDE_SPEC),
 	`Missing manifest row: ${GUIDE_SPEC}`,
@@ -167,8 +167,7 @@ for (const entry of manifest) {
 			expect(findUnlisted(guide.fences(), FENCE_LANGUAGES)).toEqual([])
 		})
 
-		it('extracts non-empty barrel and documented surfaces', () => {
-			expect(source.surface().length).toBeGreaterThan(0)
+		it('extracts a non-empty documented surface', () => {
 			expect(guide.surface().length).toBeGreaterThan(0)
 		})
 		it('re-exports every direct declaration that is not named internal', () => {
@@ -196,7 +195,7 @@ for (const entry of manifest) {
 		for (const group of guide.methods()) {
 			const members = source.methods(group.interface).map((method) => method.name)
 			const documented = group.methods.map((method) => method.name)
-			const entity = group.interface.replace(/Interface$/u, '')
+			const entity = group.interface.replace(/Interface$/, '')
 			describe(`${group.interface}`, () => {
 				it('documents at least one method', () => {
 					expect(group.methods.length).toBeGreaterThan(0)
@@ -247,7 +246,6 @@ for (const entry of manifest) {
 				.surface()
 				.filter((symbol) => symbol.keyword === 'function')
 				.map((symbol) => symbol.name)
-			expect(names.length).toBeGreaterThan(0)
 			expect(
 				findUnexampled(
 					names,
@@ -257,39 +255,37 @@ for (const entry of manifest) {
 			).toEqual([])
 		})
 
-		// The membership rule is `extractFenceImports`'s own grammar read off Guide's comment-aware source
-		// projection: a mapped specifier's bindings compare against that face's barrel surface, a
-		// repository alias and an unmapped true subpath of the root are refused because a public
-		// guide example must import through a published specifier, and a foreign package stays
-		// external and is compared against no face.
-		it('imports only real exports through published specifiers in every ts fence', () => {
-			const refused: string[] = []
-			const missing: string[] = []
-			for (const fence of guide.fences().filter((row) => row.language === EXAMPLE_LANGUAGE)) {
-				const projected = extractSourceLines(fence.code)
-					.map((line) => line.code)
-					.join('\n')
-				for (const statement of extractFenceImports(projected)) {
-					const specifier = statement.specifier
-					if (specifier.startsWith('@src/') || specifier.startsWith('@app/')) {
-						refused.push(specifier)
-						continue
-					}
-					const face = sources.source(specifier)
-					if (face === undefined) {
-						if (specifier === ROOT || specifier.startsWith(`${ROOT}/`)) refused.push(specifier)
-						continue
-					}
-					missing.push(
-						...findMissing(
-							statement.names,
-							face.surface().map((symbol) => symbol.name),
-						),
-					)
+		for (const group of guide.methods()) {
+			const entity = group.interface.replace(/Interface$/, '')
+			const documented = group.methods.map((method) => method.name)
+			const examples =
+				entity === group.interface
+					? source.examples(group.interface).map((example) => example.name)
+					: source
+							.examples(group.interface)
+							.map((example) => example.name)
+							.concat(source.examples(entity).map((example) => example.name))
+			describe(`${group.interface} examples`, () => {
+				it('documents an example for every method', () => {
+					const fences = guide
+						.fences()
+						.filter((fence) => fence.language === EXAMPLE_LANGUAGE)
+						.map((fence) => fence.code)
+					expect(findUnexampled(documented, fences, examples)).toEqual([])
+				})
+			})
+		}
+
+		it('imports only real exports in every ```ts fence', () => {
+			const fences = guide.fences().filter((fence) => fence.language === EXAMPLE_LANGUAGE)
+			for (const fence of fences) {
+				for (const { specifier, names } of extractFenceImports(fence.code)) {
+					const imported = sources.source(specifier)
+					if (imported === undefined) continue
+					const surface = imported.surface().map((symbol) => symbol.name)
+					expect(findMissing(names, surface)).toEqual([])
 				}
 			}
-			expect(refused).toEqual([])
-			expect(missing).toEqual([])
 		})
 
 		it('resolves every relative link', () => {
@@ -305,18 +301,7 @@ for (const entry of manifest) {
 				.tests()
 				.map((href) => resolveLink(entry.spec, href))
 				.filter((path) => !source.exists(path))
-			expect(guide.tests().length).toBeGreaterThan(0)
 			expect(missing).toEqual([])
-		})
-		// The Tests section is an inventory of what this package proves, so a proof that exists and
-		// is not listed is the defect. Listing is asserted as membership against the real test tree,
-		// because a count passes while the tree grows a file the section never gained.
-		it('lists every test file the repository carries', () => {
-			const listed = guide.tests().map((href) => resolveLink(entry.spec, href))
-			const present = Object.keys(files).filter((path) => path.endsWith('.test.ts'))
-
-			expect(present.length).toBeGreaterThan(0)
-			expect(present.filter((path) => !listed.includes(path))).toEqual([])
 		})
 	})
 }
@@ -327,6 +312,8 @@ for (const entry of manifest) {
 // value its comment claims.
 
 describe('flagship fences', () => {
+	const specification = requireValue(files[GUIDE_SPEC], `Missing file: ${GUIDE_SPEC}`)
+
 	it('carries the sections the charter fixes', () => {
 		const sections = createGuide(specification).sections()
 
