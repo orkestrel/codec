@@ -21,7 +21,7 @@ The families are fixed, and their direction belongs to the coding rather than to
 `encode*` moves a value toward the coding's wire form and `decode*` moves it back toward the native
 one. For the RFC 4648 faces the wire form is text, so `encodeBase64` takes bytes and returns a
 string. For a charset the wire form is bytes, so `encodeUTF8` takes a string and returns bytes.
-Nothing else inverts with it: both faces keep the same two laws, each written in the direction its
+Nothing else inverts with it: both faces keep the same laws, each written in the direction its
 own `encode*` points.
 
 Which side can fail belongs to the coding too. An RFC 4648 `encode*` cannot fail, so its `decode*`
@@ -51,8 +51,8 @@ following Measures table spells its own law.
 A face's guard and its partial function are one grammar: the guard answers by asking that function,
 so the set the guard names and the set the function accepts cannot drift apart. A measure is the one
 family that cannot ask. Its reason to exist is that it never allocates the bytes, so it walks the
-grammar itself and the suite holds the two walks against each other — a measure that produces the
-bytes has measured nothing.
+grammar itself and the suite holds its walk against the producing function's — a measure that
+produces the bytes has measured nothing.
 
 ## Surface
 
@@ -103,8 +103,8 @@ The charset faces, whose wire form is bytes rather than text: the codings from
 [`helpers.ts`](../src/core/helpers.ts) and the guards from
 [`validators.ts`](../src/core/validators.ts). `UTF8` names the RFC 3629 coding, `Latin1` the
 ISO/IEC 8859-1 one, `Windows1252` the code page, and `UTF16LE` the little-endian UTF-16 form.
-`WINDOWS_1252_HIGH` — the written-out 0x80-0x9F table both Windows-1252 functions read — is module
-data rather than public API, for the reason the Base64 alphabets are.
+`WINDOWS_1252_HIGH` — the written-out 0x80-0x9F table `encodeWindows1252` and `decodeWindows1252`
+read — is module data rather than public API, for the reason the Base64 alphabets are.
 
 | Name                | Kind     | Signature                                                | Summary                                                                                                                                                                                                                                                                                                                                |
 | ------------------- | -------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -123,9 +123,9 @@ data rather than public API, for the reason the Base64 alphabets are.
 
 ## The laws
 
-Each face keeps two laws, and the suite drives both as sweeps rather than as spot vectors. Each law
-is written in the direction the face's own `encode*` points, so an RFC 4648 face reads it over bytes
-and text where a charset reads it over text and bytes.
+Each face keeps the round-trip and canonical-form laws, and the suite drives both as sweeps rather
+than as spot vectors. Each law is written in the direction the face's own `encode*` points, so an
+RFC 4648 face reads it over bytes and text where a charset reads it over text and bytes.
 
 **The round-trip law.** `decode*(encode*(value))` deep-equals `value`, for every input the face
 admits, the empty one included. On the §4 face that reads `decodeBase64(encodeBase64(bytes))`; on
@@ -136,8 +136,8 @@ guard admits. On the §4 face the wire form is text and the law reads
 `encodeBase64(decodeBase64(text)) === text`; on the UTF-8 face it is bytes and the law reads
 `encodeUTF8(decodeUTF8(bytes))` deep-equals `bytes`.
 
-A measure keeps one law, over every string rather than over the admitted ones alone, and it is
-written in the direction that measure reads.
+A measure keeps the sound-triple law, over every string rather than over the admitted ones alone,
+and it is written in the direction that measure reads.
 
 **The sound-triple law.** `measure*(text)` equals the length of the bytes the function producing
 them would return, or `undefined` where that function refuses `text`. On the RFC 4648 faces the
@@ -148,7 +148,8 @@ pins `undefined` on both sides. The suite drives `measureBase64`, `measureBase64
 `measureHex` against their decoders across each face's sweep population, membership rows, measure
 rows, octet-prefix encodings, and the mutant population, and drives `measureUTF8` against
 `encodeUTF8` across the well-formed text population, the ill-formed rows, and every boundary code
-point — so a divergence between the two walks reddens on the texts those populations reach.
+point — so a divergence between a measure's walk and its producer's reddens on the texts those
+populations reach.
 
 The canonical-form law is the one that does the work. It says a decoder may accept only the
 spelling its own encoder produces, which rules out every lenient door at once: the wrong alphabet
@@ -195,9 +196,9 @@ character is reachable from two bytes — so `encodeWindows1252` is its exact in
 every character outside the image, which includes all of U+0080-U+009F because no defined slot
 reaches a C1 control.
 
-UTF-16LE closes on the two things the wire form can get wrong: an odd length, which completes no
-code unit, and a surrogate the byte stream leaves unpaired — a lead with nothing after it, a lead
-followed by a BMP code unit, and a trail with no lead alike.
+UTF-16LE closes on what the wire form can get wrong: an odd length, which completes no code unit,
+and a surrogate the byte stream leaves unpaired — a lead with nothing after it, a lead followed by
+a BMP code unit, and a trail with no lead alike.
 
 ### The BOM stance
 
@@ -215,7 +216,7 @@ package in ways worth naming rather than discovering.
 
 - **`TextDecoder('latin1')` is not ISO-8859-1.** The WHATWG `latin1` label is an alias for
   windows-1252: the decoder reports `encoding === 'windows-1252'` and answers U+20AC for the byte
-  0x80. `decodeLatin1` answers U+0080, because ISO-8859-1 is the identity. The two codings agree
+  0x80. `decodeLatin1` answers U+0080, because ISO-8859-1 is the identity. The codings agree
   outside 0x80-0x9F and part company across it.
 - **The WHATWG windows-1252 index defines all 256 entries.** It maps each undefined slot to its own
   C1 control, so `TextDecoder('windows-1252')` answers U+0081 for the byte 0x81 where
@@ -248,10 +249,10 @@ written in that coding's own direction, and a consumer needs the size before the
 grammar of its own, so it ships beside its coding rather than as a face. `measureBase64`,
 `measureBase64URL`, `measureHex`, and `measureUTF8` each meet that bar. UTF-8 is the charset that
 meets it, because its width varies per code point and the walk deciding that width is work a
-consumer sizing a buffer would otherwise repeat. The other charsets fail the last clause rather than
-the first: `encodeLatin1` and `encodeWindows1252` write one byte per code unit and `encodeUTF16LE`
-writes two, so `text.length` already answers the question and a measure there would name no walk its
-encoder skips.
+consumer sizing a buffer would otherwise repeat. The other charsets fail on the consumer needing the
+size before the bytes rather than on the coding being here: `encodeLatin1` and `encodeWindows1252`
+write one byte per code unit and `encodeUTF16LE` writes two, so `text.length` already answers the
+question and a measure there would name no walk its encoder skips.
 
 A transform that carries state between calls, that takes a parameter changing what it produces,
 that reads a document grammar rather than a byte-to-text mapping, or that encodes a caller's policy
@@ -321,7 +322,7 @@ isBase64URL('aGk=') // false
 isBase64URL(42) // false — total on any value, never a throw
 ```
 
-### Drive both laws
+### Drive the round-trip and canonical-form laws
 
 ```ts
 import { decodeBase64, encodeBase64, isBase64 } from '@orkestrel/codec'
@@ -416,29 +417,29 @@ measureUTF8('\ud800') // undefined — ill-formed text has no UTF-8 spelling
   round-trip law runs the whole octet space in one buffer, every padding residue, every single
   byte, and every byte pair on the §4 and §5 faces; the §8 face runs the same one-buffer sweep and
   residue prefixes beside its empty, single-byte, and byte-pair walks. The canonical-form law runs an
-  exhaustive walk over short texts spanning the Base64 alphabets and a second walk over short hex
+  exhaustive walk over short texts spanning the Base64 alphabets and another walk over short hex
   texts carrying uppercase and foreign characters, re-encoding every admitted text to itself. The
   sound-triple law runs `measureBase64` against `decodeBase64` and `measureBase64URL` against
   `decodeBase64URL` over the Base64 sweep population and the written-out Base64 membership and
   measure rows, runs `measureHex` against `decodeHex` over the hex sweep population and the
   written-out hex rows, holds every measure against every canonical encoding of an octet prefix, and
-  drives all three over a deterministic mutant population — canonical encodings of octet prefixes up
-  to 24 bytes, each carried under one substitution, insertion, or truncation from a written-out
-  xorshift over a constant seed, so a refusal lands deep inside a text whose prefix is admissible
-  where the four-character sweeps cannot reach. `measureUTF8` runs against `encodeUTF8` instead,
-  over the well-formed text population, the ill-formed rows, every boundary code point, and its own
-  written-out rows. One case reads what the mutants actually reach on each face, so a population
-  that admitted everything would fail rather than pass quietly. Beside the sweeps sit the named
-  vectors, the named measures on each face, the canonical refusals, the Base64 alphabets read
-  against the specification in both directions, and the hex alphabet read against the language's
-  own radix conversion in both directions.
+  drives each RFC 4648 measure over a deterministic mutant population — canonical encodings of octet
+  prefixes up to 24 bytes, each carried under one substitution, insertion, or truncation from a
+  written-out xorshift over a constant seed, so a refusal lands deep inside a text whose prefix is
+  admissible where the four-character sweeps cannot reach. `measureUTF8` runs against `encodeUTF8`
+  instead, over the well-formed text population, the ill-formed rows, every boundary code point, and
+  its own written-out rows. A case reads what the mutants actually reach on each face, so a
+  population that admitted everything would fail rather than pass quietly. Beside the sweeps sit the
+  named vectors, the named measures on each face, the canonical refusals, the Base64 alphabets read
+  against the specification in both directions, and the hex alphabet read against the language's own
+  radix conversion in both directions.
 
-  The charset faces run the same two laws in their own direction. The round-trip law walks a
-  well-formed text population built from characters spanning every UTF-8 width threshold, the BOM,
-  the Latin-1 ceiling, both Windows-1252 bands, and the code points on either side of the surrogate
-  range, and pins each width threshold at the byte length
-  the specification fixes. The canonical-form law walks the exhaustive two-byte space on all four
-  faces, re-encoding every admitted pair to itself, and reads the Windows-1252 defined mapping as a
+  The charset faces run the round-trip and canonical-form laws in their own direction. The
+  round-trip law walks a well-formed text population built from characters spanning every UTF-8
+  width threshold, the BOM, the Latin-1 ceiling, the Windows-1252 bands, and the code points on
+  either side of the surrogate range, and pins each width threshold at the byte length the
+  specification fixes. The canonical-form law walks the exhaustive two-byte space on every charset
+  face, re-encoding every admitted pair to itself, and reads the Windows-1252 defined mapping as a
   bijection and the Latin-1 mapping as the identity bijection. Beside the sweeps sit the written-out
   refusal rows — the overlongs, the encoded surrogates, the out-of-range and truncated sequences,
   the undefined code-page slots, the odd length, and the unpaired surrogates — each pinned against
@@ -449,7 +450,7 @@ measureUTF8('\ud800') // undefined — ill-formed text has no UTF-8 spelling
   `TextDecoder` carrying `ignoreBOM` over the whole two-byte space, `encodeUTF8` against
   `TextEncoder` over the well-formed texts, and `decodeWindows1252` against the WHATWG index over
   the bytes that index and this coding both define. `decodeLatin1` is held against
-  `String.fromCharCode` rather than against the `latin1` label, and one assertion pins the label's
+  `String.fromCharCode` rather than against the `latin1` label, and an assertion pins the label's
   disagreement to the 0x80-0x9F band so a later reader cannot quietly adopt it as the oracle.
 
   Further sweeps reach the multi-byte defects a two-byte space cannot present. The embedded
@@ -457,9 +458,9 @@ measureUTF8('\ud800') // undefined — ill-formed text has no UTF-8 spelling
   the decoder has already started walking. The mutation sweep takes the canonical encoding of each
   boundary code point and substitutes every byte position through all 256 values, which reaches the
   overlong spellings of a four-byte code point and the encoded surrogates that sit one lead byte
-  from a canonical U+D7FF. Both run against the same fatal `TextDecoder`.
+  from a canonical U+D7FF. Each runs against the same fatal `TextDecoder`.
 
-  The Windows-1252 high table carries a second reading that is not a platform decoder at all. The
+  The Windows-1252 high table carries another reading that is not a platform decoder at all. The
   WHATWG index defines all 256 slots, so it is silent on exactly the omissions that make this code
   page what it is; a hand transcription of the published table in `tests/setup.ts`, carrying the
   characters rather than their code points, is compared against the source table entry by entry and

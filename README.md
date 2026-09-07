@@ -1,4 +1,4 @@
-# Codec
+# @orkestrel/codec
 
 > The fleet's byte-to-text codings: sound `encode` / `decode` / guard triples over `string` and
 > `Uint8Array` for RFC 4648 Base64, base64url, and hex and for the UTF-8, ISO-8859-1,
@@ -9,6 +9,18 @@ Import the face you need from `@orkestrel/codec` and call it: every export is a 
 `string` and `Uint8Array`, with no options bag, no class, no error type, and no runtime dependency.
 A decoder reports refusal as `undefined` and a guard reports it as `false`, so there is nothing to
 catch and nothing to configure. Source: [`src/core`](src/core). Part of the `@orkestrel` line.
+
+## Install
+
+```sh
+npm install @orkestrel/codec
+```
+
+## Requirements
+
+- Node.js >= 22.12.0, matching the `engines` field in `package.json`
+- ESM and CommonJS entry points, selected by the `exports` field in `package.json`
+- No runtime dependencies, so installing this package installs nothing else
 
 The RFC 4648 faces and their guards are the guide's [Codings](guides/codec.md#codings) section, and
 the byte-side sizes beside them are its [Measures](guides/codec.md#measures) section.
