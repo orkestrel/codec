@@ -9,11 +9,13 @@ import {
 } from './helpers.js'
 
 /**
- * Checks whether a value is canonical standard Base64 text.
+ * Checks whether a value is canonical standard Base64 text — true for exactly the strings
+ * {@link decodeBase64} answers bytes for. Total on any value: a number, `null`, or a byte sequence
+ * is false rather than a throw.
  *
  * @remarks
- * True for exactly the strings {@link decodeBase64} answers bytes for, because it asks that
- * decoder. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.
+ * Asking {@link decodeBase64} rather than re-deriving the §4 grammar is what keeps the guard and
+ * the decoder from drifting apart.
  *
  * @param value - The value to test.
  * @returns True if `value` is canonical §4 Base64 text; false otherwise.
@@ -29,11 +31,14 @@ export function isBase64(value: unknown): value is string {
 }
 
 /**
- * Checks whether a value is canonical base64url text.
+ * Checks whether a value is canonical base64url text — true for exactly the strings
+ * {@link decodeBase64URL} answers bytes for. A padded text, a `+`, and a `/` belong to the §4 face
+ * and are false. Total on any value: a number, `null`, or a byte sequence is false rather than a
+ * throw.
  *
  * @remarks
- * True for exactly the strings {@link decodeBase64URL} answers bytes for, because it asks that
- * decoder. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.
+ * Asking {@link decodeBase64URL} rather than re-deriving the §5 grammar is what keeps the guard
+ * and the decoder from drifting apart.
  *
  * @param value - The value to test.
  * @returns True if `value` is canonical §5 base64url text; false otherwise.
@@ -49,12 +54,13 @@ export function isBase64URL(value: unknown): value is string {
 }
 
 /**
- * Checks whether a value is canonical lowercase hex text.
+ * Checks whether a value is canonical lowercase hex text — true for exactly the strings
+ * {@link decodeHex} answers bytes for. An uppercase digit, an odd length, and a `0x` prefix are
+ * false. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.
  *
  * @remarks
- * True for exactly the strings {@link decodeHex} answers bytes for, because it asks that decoder.
- * An uppercase digit, an odd length, and a `0x` prefix are false. Total on any value: a number,
- * `null`, or a byte sequence is false rather than a throw.
+ * Asking {@link decodeHex} rather than re-deriving the §8 grammar is what keeps the guard and the
+ * decoder from drifting apart.
  *
  * @param value - The value to test.
  * @returns True if `value` is canonical §8 lowercase hex text; false otherwise.
@@ -85,12 +91,14 @@ export function isHex(value: unknown): value is string {
 // trap could otherwise walk a decoder past the bytes it actually holds.
 
 /**
- * Checks whether a value is bytes that decode as strict UTF-8.
+ * Checks whether a value is bytes that decode as strict UTF-8 — true for exactly the byte
+ * sequences {@link decodeUTF8} answers text for. An overlong spelling, an encoded surrogate, and a
+ * truncated sequence are false. Total on any value: a string, `null`, a sibling view kind, or a
+ * proxy is false rather than a throw.
  *
  * @remarks
- * True for exactly the byte sequences {@link decodeUTF8} answers text for, because it asks that
- * decoder. An overlong spelling, an encoded surrogate, and a truncated sequence are false. Total on
- * any value: a string, `null`, a sibling view kind, or a proxy is false rather than a throw.
+ * Asking {@link decodeUTF8} rather than re-deriving the RFC 3629 grammar is what keeps the guard
+ * and the decoder from drifting apart.
  *
  * @param value - The value to test.
  * @returns True if `value` is a byte sequence in strict UTF-8; false otherwise.
@@ -106,13 +114,14 @@ export function isUTF8(value: unknown): value is Uint8Array {
 }
 
 /**
- * Checks whether a value is text ISO/IEC 8859-1 can encode.
+ * Checks whether a value is text ISO/IEC 8859-1 can encode — true for exactly the strings
+ * {@link encodeLatin1} answers bytes for. This coding's guard names the encode side because its
+ * decoder is total and refuses nothing there. Total on any value: a number, `null`, or a byte
+ * sequence is false rather than a throw.
  *
  * @remarks
- * True for exactly the strings {@link encodeLatin1} answers bytes for, because it asks that
- * encoder. This coding's guard names the encode side because its decoder is total and so refuses
- * nothing there. Total on any value: a number, `null`, or a byte sequence is false rather than a
- * throw.
+ * Asking {@link encodeLatin1} rather than re-deriving the 0xFF ceiling is what keeps the guard and
+ * the encoder from drifting apart.
  *
  * @param value - The value to test.
  * @returns True if `value` is text every code unit of which fits one Latin-1 byte; false otherwise.
@@ -128,13 +137,14 @@ export function isLatin1(value: unknown): value is string {
 }
 
 /**
- * Checks whether a value is bytes that decode as Windows-1252.
+ * Checks whether a value is bytes that decode as Windows-1252 — true for exactly the byte
+ * sequences {@link decodeWindows1252} answers text for. Bytes 0x81, 0x8D, 0x8F, 0x90, and 0x9D are
+ * undefined slots of the code page and are false. Total on any value: a string, `null`, a sibling
+ * view kind, or a proxy is false rather than a throw.
  *
  * @remarks
- * True for exactly the byte sequences {@link decodeWindows1252} answers text for, because it asks
- * that decoder. Bytes 0x81, 0x8D, 0x8F, 0x90, and 0x9D are undefined slots of the code page and are
- * false. Total on any value: a string, `null`, a sibling view kind, or a proxy is false rather than
- * a throw.
+ * Asking {@link decodeWindows1252} rather than re-deriving the code page is what keeps the guard
+ * and the decoder from drifting apart.
  *
  * @param value - The value to test.
  * @returns True if `value` is a byte sequence of defined Windows-1252 slots; false otherwise.
@@ -154,12 +164,13 @@ export function isWindows1252(value: unknown): value is Uint8Array {
 }
 
 /**
- * Checks whether a value is bytes that decode as UTF-16LE.
+ * Checks whether a value is bytes that decode as UTF-16LE — true for exactly the byte sequences
+ * {@link decodeUTF16LE} answers text for. An odd length and an unpaired surrogate are false. Total
+ * on any value: a string, `null`, a sibling view kind, or a proxy is false rather than a throw.
  *
  * @remarks
- * True for exactly the byte sequences {@link decodeUTF16LE} answers text for, because it asks that
- * decoder. An odd length and an unpaired surrogate are false. Total on any value: a string, `null`,
- * a sibling view kind, or a proxy is false rather than a throw.
+ * Asking {@link decodeUTF16LE} rather than re-deriving the UTF-16 grammar is what keeps the guard
+ * and the decoder from drifting apart.
  *
  * @param value - The value to test.
  * @returns True if `value` is a byte sequence in well-formed UTF-16LE; false otherwise.

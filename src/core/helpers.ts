@@ -20,18 +20,21 @@ import {
 // it, so the two cannot drift.
 
 /**
- * Encodes a byte sequence as standard padded Base64.
- *
- * @remarks
- * Emits the RFC 4648 §4 alphabet (`+`, `/`) with `=` padding — the canonical spelling of these
- * bytes and the only form {@link decodeBase64} accepts. Total: encoding cannot fail.
+ * Encodes a byte sequence as standard padded Base64, in the RFC 4648 §4 alphabet (`+`, `/`) with
+ * `=` padding. That spelling is the canonical form and the only form {@link decodeBase64} accepts.
+ * Total: encoding cannot fail.
  *
  * @param bytes - The bytes to encode.
  * @returns The canonical padded Base64 text.
  *
- * @example
+ * @example Encode and decode a byte sequence
  * ```ts
+ * import { decodeBase64, encodeBase64 } from '@orkestrel/codec'
+ *
  * encodeBase64(new Uint8Array([104, 105])) // 'aGk='
+ * decodeBase64('aGk=') // Uint8Array [104, 105]
+ * encodeBase64(new Uint8Array([])) // ''
+ * decodeBase64('') // Uint8Array []
  * ```
  */
 export function encodeBase64(bytes: Uint8Array): string {
@@ -49,13 +52,15 @@ export function encodeBase64(bytes: Uint8Array): string {
 }
 
 /**
- * Decodes canonical standard Base64 text into its bytes.
+ * Decodes canonical standard Base64 text into its bytes, reading back exactly what
+ * {@link encodeBase64} writes. Every other text is `undefined`: a wrong alphabet, embedded
+ * whitespace, wrong padding, and a non-zero unused trailing bit alike.
  *
  * @remarks
- * Accepts only the RFC 4648 §4 form {@link encodeBase64} produces: the standard alphabet, a length
- * on the four-character group boundary, `=` padding only at the end, and zero in every unused
- * trailing bit. `'aa=='` therefore fails where `'aQ=='` — the canonical spelling of the same
- * leading byte — succeeds. `undefined` is the only failure mode; nothing here throws.
+ * The accepted grammar is the RFC 4648 §4 form in full: the standard alphabet, a length on the
+ * four-character group boundary, `=` padding only at the end, and zero in every unused trailing
+ * bit. `'aa=='` therefore fails where `'aQ=='` — the canonical spelling of the same leading byte —
+ * succeeds. `undefined` is the only failure mode; nothing here throws.
  *
  * @param text - The text to decode.
  * @returns The decoded bytes, or `undefined` when `text` is not canonical §4 Base64.
@@ -91,12 +96,13 @@ export function decodeBase64(text: string): Uint8Array<ArrayBuffer> | undefined 
 }
 
 /**
- * Encodes a byte sequence as unpadded base64url.
+ * Encodes a byte sequence as unpadded base64url, in the RFC 4648 §5 url alphabet (`-`, `_`) with
+ * the padding removed. That spelling is the canonical form and the only form
+ * {@link decodeBase64URL} accepts. Total: encoding cannot fail.
  *
  * @remarks
- * Emits the RFC 4648 §5 url alphabet (`-`, `_`) with the padding removed — the {@link encodeBase64}
- * output under that substitution, and the only form {@link decodeBase64URL} accepts. Total:
- * encoding cannot fail.
+ * The bytes reach that text as the {@link encodeBase64} output under the alphabet substitution,
+ * with the `=` padding dropped.
  *
  * @param bytes - The bytes to encode.
  * @returns The canonical unpadded base64url text.
@@ -111,13 +117,14 @@ export function encodeBase64URL(bytes: Uint8Array): string {
 }
 
 /**
- * Decodes canonical base64url text into its bytes.
+ * Decodes canonical base64url text into its bytes, reading back exactly what
+ * {@link encodeBase64URL} writes. A padded text, a `+`, and a `/` belong to the §4 face and are
+ * `undefined` here.
  *
  * @remarks
- * Accepts only the RFC 4648 §5 form {@link encodeBase64URL} produces: the url alphabet, no padding,
- * and zero in every unused trailing bit. A `+`, a `/`, or an `=` belongs to the §4 face and is
- * refused here, so `'-_-_'` decodes where `'+/+/'` and `'aGk='` do not. `undefined` is the only
- * failure mode; nothing here throws.
+ * The accepted grammar is the RFC 4648 §5 form in full: the url alphabet, no padding, and zero in
+ * every unused trailing bit. `'-_-_'` therefore decodes where `'+/+/'` and `'aGk='` do not.
+ * `undefined` is the only failure mode; nothing here throws.
  *
  * @param text - The text to decode.
  * @returns The decoded bytes, or `undefined` when `text` is not canonical §5 base64url.
@@ -136,14 +143,14 @@ export function decodeBase64URL(text: string): Uint8Array<ArrayBuffer> | undefin
 }
 
 /**
- * Encodes a byte sequence as lowercase hex.
+ * Encodes a byte sequence as lowercase hex, in the RFC 4648 §8 base16 alphabet, two digits per
+ * byte. That spelling is the canonical form and the only form {@link decodeHex} accepts. Total:
+ * encoding cannot fail.
  *
  * @remarks
- * Emits the RFC 4648 §8 base16 coding, two digits per byte — the canonical spelling of these bytes
- * and the only form {@link decodeHex} accepts. The specification's §8 table spells the alphabet
- * uppercase; this package spells it lowercase, a deliberate departure matching every producer the
- * fleet already reads, and one canonical spelling per input is what forces a single choice. Total:
- * encoding cannot fail.
+ * The specification's §8 table spells the alphabet uppercase; this package spells it lowercase, a
+ * deliberate departure matching every producer the fleet already reads, and one canonical spelling
+ * per input is what forces a single choice.
  *
  * @param bytes - The bytes to encode.
  * @returns The canonical lowercase hex text.
@@ -163,13 +170,14 @@ export function encodeHex(bytes: Uint8Array): string {
 }
 
 /**
- * Decodes canonical lowercase hex text into its bytes.
+ * Decodes canonical lowercase hex text into its bytes, reading back exactly what {@link encodeHex}
+ * writes. An uppercase digit, an odd length, a `0x` prefix, whitespace, and any character outside
+ * the alphabet are `undefined`.
  *
  * @remarks
- * Accepts only the RFC 4648 §8 form {@link encodeHex} produces: lowercase digits, two per byte, and
- * nothing else. `'AB'` re-encodes as `'ab'`, so admitting it would break the canonical-form law;
- * an odd length, a `0x` prefix, whitespace, and any character outside the alphabet are refused for
- * the same reason. `undefined` is the only failure mode; nothing here throws.
+ * `'AB'` re-encodes as `'ab'`, so admitting it would break the canonical-form law, and every other
+ * refusal here closes for that same reason. `undefined` is the only failure mode; nothing here
+ * throws.
  *
  * @param text - The text to decode.
  * @returns The decoded bytes, or `undefined` when `text` is not canonical lowercase hex.
@@ -209,14 +217,15 @@ export function decodeHex(text: string): Uint8Array<ArrayBuffer> | undefined {
 // per face.
 
 /**
- * Measures the byte length canonical standard Base64 text decodes to.
+ * Measures the byte length canonical standard Base64 text decodes to, without allocating those
+ * bytes, and answers `undefined` for exactly the texts {@link decodeBase64} refuses.
  *
  * @remarks
  * Keeps the sound triple `measureBase64(text) === decodeBase64(text)?.length` for every string,
  * walking the full RFC 4648 §4 grammar — the length residue, the padding placement, the alphabet
- * membership, and the unused trailing bits — without allocating the decoded bytes. That is its
- * reason to exist, so it repeats the walk rather than asking {@link decodeBase64}. `undefined` is
- * the only failure mode; nothing here throws.
+ * membership, and the unused trailing bits. Leaving the decoded bytes unallocated is its reason to
+ * exist, so it repeats that walk rather than asking {@link decodeBase64}. `undefined` is the only
+ * failure mode; nothing here throws.
  *
  * @param text - The text to measure.
  * @returns The decoded byte length, or `undefined` when `text` is not canonical §4 Base64.
@@ -245,15 +254,16 @@ export function measureBase64(text: string): number | undefined {
 }
 
 /**
- * Measures the byte length canonical base64url text decodes to.
+ * Measures the byte length canonical base64url text decodes to, without allocating those bytes,
+ * and answers `undefined` for exactly the texts {@link decodeBase64URL} refuses.
  *
  * @remarks
  * Keeps the sound triple `measureBase64URL(text) === decodeBase64URL(text)?.length` for every
  * string, walking the full RFC 4648 §5 grammar — the `+`, `/`, and `=` the url face refuses
  * outright, the length residue padding completes, the alphabet membership, and the unused trailing
- * bits — without allocating the decoded bytes. That is its reason to exist, so it reads the §5
- * face the way {@link decodeBase64URL} reads it and lands on {@link measureBase64} rather than on
- * a decoder. `undefined` is the only failure mode; nothing here throws.
+ * bits. Leaving the decoded bytes unallocated is its reason to exist, so it reads the §5 face the
+ * way {@link decodeBase64URL} reads it and lands on {@link measureBase64} rather than on a
+ * decoder. `undefined` is the only failure mode; nothing here throws.
  *
  * @param text - The text to measure.
  * @returns The decoded byte length, or `undefined` when `text` is not canonical §5 base64url.
@@ -272,13 +282,14 @@ export function measureBase64URL(text: string): number | undefined {
 }
 
 /**
- * Measures the byte length canonical lowercase hex text decodes to.
+ * Measures the byte length canonical lowercase hex text decodes to, without allocating those
+ * bytes, and answers `undefined` for exactly the texts {@link decodeHex} refuses.
  *
  * @remarks
  * Keeps the sound triple `measureHex(text) === decodeHex(text)?.length` for every string, walking
  * the full RFC 4648 §8 grammar — the even length and the lowercase alphabet membership, which
- * holds no uppercase digit — and answering half the length only after that walk admits the text,
- * without allocating the decoded bytes. That is its reason to exist, so it repeats the walk rather
+ * holds no uppercase digit — and answering half the length only after that walk admits the text.
+ * Leaving the decoded bytes unallocated is its reason to exist, so it repeats that walk rather
  * than asking {@link decodeHex}. `undefined` is the only failure mode; nothing here throws.
  *
  * @param text - The text to measure.
@@ -301,15 +312,16 @@ export function measureHex(text: string): number | undefined {
 }
 
 /**
- * Measures the UTF-8 byte length text encodes to.
+ * Measures the UTF-8 byte length text encodes to, without allocating those bytes, and answers
+ * `undefined` for exactly the ill-formed strings {@link encodeUTF8} refuses.
  *
  * @remarks
  * Keeps the sound triple `measureUTF8(text) === encodeUTF8(text)?.length` for every string. The
  * direction is the charset's rather than the RFC 4648 faces': UTF-8's wire form is bytes, so this
- * measure reads native text and counts the wire bytes {@link encodeUTF8} would write — one per code
- * point under U+0080, two under U+0800, three under U+10000, and four beyond it — without allocating
- * any of them. That is its reason to exist, so it walks the code units rather than asking
- * {@link encodeUTF8}. Ill-formed text is the one refusal, exactly as on the encode side.
+ * measure reads native text and counts the wire bytes {@link encodeUTF8} would write — one per
+ * code point under U+0080, two under U+0800, three under U+10000, and four beyond it. Leaving
+ * those bytes unallocated is its reason to exist, so it walks the code units rather than asking
+ * {@link encodeUTF8}.
  *
  * `computeBytes` in `@orkestrel/scaffold` answers a different question for a lone surrogate: it
  * counts the three bytes `TextEncoder` writes for the replacement character, where this measure
@@ -362,14 +374,14 @@ export function measureUTF8(text: string): number | undefined {
 // admits no byte the decoder is allowed to discard.
 
 /**
- * Encodes text as UTF-8 bytes.
+ * Encodes text as UTF-8 bytes, in the RFC 3629 shortest form for every code point — the canonical
+ * spelling, and the only form {@link decodeUTF8} accepts. Ill-formed text is the one refusal: a
+ * lone surrogate has no UTF-8 spelling, so the answer is `undefined`.
  *
  * @remarks
- * Emits the RFC 3629 shortest form for every code point — the canonical spelling of this text and
- * the only form {@link decodeUTF8} accepts. Ill-formed text is the one failure: a lone surrogate
- * has no UTF-8 spelling, so `encodeUTF8` answers `undefined` for exactly the strings
- * `String.prototype.isWellFormed` reports false for. U+FEFF encodes to its own bytes wherever it
- * sits, leading position included; this coding reads no byte order mark.
+ * The refused set is `String.prototype.isWellFormed`'s own: the strings it reports false for are
+ * exactly the strings refused here. U+FEFF encodes to its own bytes wherever it sits, leading
+ * position included; this coding reads no byte order mark.
  *
  * @param text - The text to encode.
  * @returns The UTF-8 bytes, or `undefined` when `text` is ill-formed.
@@ -408,14 +420,14 @@ export function encodeUTF8(text: string): Uint8Array<ArrayBuffer> | undefined {
 }
 
 /**
- * Decodes UTF-8 bytes into their text.
+ * Decodes UTF-8 bytes into their text, reading back exactly what {@link encodeUTF8} writes. An
+ * overlong spelling, an encoded surrogate, a code point past U+10FFFF, a truncated sequence, a
+ * stray continuation byte, and a lead byte outside the grammar are `undefined`. A leading BOM is
+ * kept as U+FEFF rather than stripped.
  *
  * @remarks
- * Accepts only the RFC 3629 shortest form {@link encodeUTF8} produces. An overlong spelling, an
- * encoded surrogate, a code point past U+10FFFF, a truncated sequence, a stray continuation byte,
- * and a lead byte outside the grammar are all `undefined`. A leading BOM is preserved as U+FEFF
- * rather than stripped, because the round-trip law leaves the decoder no byte it may discard —
- * that is this coding's one documented departure from the platform's own default decoder.
+ * The round-trip law leaves the decoder no byte it may discard, which is what keeps that leading
+ * BOM — this coding's one documented departure from the platform's own default decoder.
  * `undefined` is the only failure mode; nothing here throws.
  *
  * @param bytes - The bytes to decode.
@@ -469,12 +481,12 @@ export function decodeUTF8(bytes: Uint8Array): string | undefined {
 // windows-1252 coding rather than this one.
 
 /**
- * Encodes text as ISO/IEC 8859-1 bytes.
+ * Encodes text as ISO/IEC 8859-1 bytes, writing each code unit as the byte of the same value,
+ * which is the whole of that coding. A code unit past 0xFF has no byte here, so a text carrying
+ * one is `undefined`.
  *
  * @remarks
- * Writes each code unit as the byte of the same value, which is the whole of ISO/IEC 8859-1. A
- * code unit past 0xFF has no byte in this coding, so `encodeLatin1` answers `undefined` for any
- * text carrying one — a lone surrogate included, because every surrogate sits past 0xFF.
+ * Every surrogate sits past 0xFF, so a text carrying a lone one is refused with the rest.
  *
  * @param text - The text to encode.
  * @returns The Latin-1 bytes, or `undefined` when a code unit exceeds 0xFF.
@@ -496,13 +508,14 @@ export function encodeLatin1(text: string): Uint8Array<ArrayBuffer> | undefined 
 }
 
 /**
- * Decodes ISO/IEC 8859-1 bytes into their text.
+ * Decodes ISO/IEC 8859-1 bytes into their text, reading each byte as the code point of the same
+ * value. Total: every byte names a character, so there is no failure mode and no `undefined`
+ * return.
  *
  * @remarks
- * Reads each byte as the code point of the same value. Every byte names a character, so this
- * decoder is total: it has no failure mode and no `undefined` return, and `isLatin1` therefore
- * guards the encode direction instead. Do not reach for the WHATWG `latin1` label to check this
- * coding — that label names windows-1252, which disagrees across 0x80-0x9F.
+ * `isLatin1` guards the encode direction instead, because this side refuses nothing. Do not reach
+ * for the WHATWG `latin1` label to check this coding — that label names windows-1252, which
+ * disagrees across 0x80-0x9F.
  *
  * @param bytes - The bytes to decode.
  * @returns The decoded text.
@@ -528,13 +541,13 @@ export function decodeLatin1(bytes: Uint8Array): string {
 // C1 control among them, because no defined slot maps into U+0080-U+009F.
 
 /**
- * Encodes text as Windows-1252 bytes.
+ * Encodes text as Windows-1252 bytes, inverting the mapping {@link decodeWindows1252} reads: the
+ * identity under U+0080 and across U+00A0-U+00FF, and the reverse of the high table between them.
+ * A character outside that image is `undefined`, every C1 control included.
  *
  * @remarks
- * Inverts the mapping {@link decodeWindows1252} reads: the identity under U+0080 and across
- * U+00A0-U+00FF, and the reverse of the high table between them. A character outside that image
- * has no byte in this code page, so `encodeWindows1252` answers `undefined` for it — every C1
- * control included, because the code page's defined slots reach none of U+0080-U+009F.
+ * The code page's defined slots reach none of U+0080-U+009F, which is why every C1 control sits
+ * outside the image.
  *
  * @param text - The text to encode.
  * @returns The Windows-1252 bytes, or `undefined` when a character is outside the code page.
@@ -562,14 +575,14 @@ export function encodeWindows1252(text: string): Uint8Array<ArrayBuffer> | undef
 }
 
 /**
- * Decodes Windows-1252 bytes into their text.
+ * Decodes Windows-1252 bytes into their text, reading 0x00-0x7F and 0xA0-0xFF as the identity and
+ * 0x80-0x9F through the written-out high table. Bytes 0x81, 0x8D, 0x8F, 0x90, and 0x9D name no
+ * character in the code page and are `undefined`.
  *
  * @remarks
- * Reads 0x00-0x7F and 0xA0-0xFF as the identity and 0x80-0x9F through the written-out high table.
- * Bytes 0x81, 0x8D, 0x8F, 0x90, and 0x9D are undefined in the code page and are refused here. The
- * WHATWG Encoding index maps each of those to its own C1 control, so a platform decoder carrying
- * that index disagrees with this one on exactly those bytes. `undefined` is the only failure mode;
- * nothing here throws.
+ * The WHATWG Encoding index maps each of those bytes to its own C1 control, so a platform decoder
+ * carrying that index disagrees with this one on exactly them. `undefined` is the only failure
+ * mode; nothing here throws.
  *
  * @param bytes - The bytes to decode.
  * @returns The decoded text, or `undefined` when a byte is an undefined code-page slot.
@@ -605,14 +618,14 @@ export function decodeWindows1252(bytes: Uint8Array): string | undefined {
 // takes for EF BB BF.
 
 /**
- * Encodes text as little-endian UTF-16 bytes.
+ * Encodes text as little-endian UTF-16 bytes, writing each code unit as its low byte then its high
+ * byte, which is the whole coding. Ill-formed text is the one refusal: an unpaired surrogate is no
+ * UTF-16 sequence, so the answer is `undefined`.
  *
  * @remarks
- * Writes each code unit as its low byte then its high byte, which is the whole coding. Ill-formed
- * text is the one failure: an unpaired surrogate is not a UTF-16 sequence, so `encodeUTF16LE`
- * answers `undefined` for exactly the strings `String.prototype.isWellFormed` reports false for. A
- * leading U+FEFF encodes to FF FE and is read back as U+FEFF; this coding writes no byte order
- * mark of its own.
+ * The refused set is `String.prototype.isWellFormed`'s own: the strings it reports false for are
+ * exactly the strings refused here. A leading U+FEFF encodes to FF FE and is read back as U+FEFF;
+ * this coding writes no byte order mark of its own.
  *
  * @param text - The text to encode.
  * @returns The UTF-16LE bytes, or `undefined` when `text` is ill-formed.
@@ -635,15 +648,16 @@ export function encodeUTF16LE(text: string): Uint8Array<ArrayBuffer> | undefined
 }
 
 /**
- * Decodes little-endian UTF-16 bytes into their text.
+ * Decodes little-endian UTF-16 bytes into their text, reading two bytes per code unit, low byte
+ * first. An odd length and an unpaired surrogate are `undefined`. A leading FF FE is kept as
+ * U+FEFF rather than stripped.
  *
  * @remarks
- * Reads two bytes per code unit, low byte first. An odd length is refused because the trailing byte
- * completes no code unit, and an unpaired surrogate is refused because it spells no character — a
- * lead with nothing after it, a lead followed by a non-trail, and a trail with no lead alike. A
- * leading FF FE is preserved as U+FEFF rather than stripped, which is this coding's documented
- * departure from the platform's own default decoder. `undefined` is the only failure mode; nothing
- * here throws.
+ * An odd length is refused because the trailing byte completes no code unit, and an unpaired
+ * surrogate because it spells no character — a lead with nothing after it, a lead followed by a
+ * non-trail, and a trail with no lead alike. Keeping that leading FF FE is this coding's
+ * documented departure from the platform's own default decoder. `undefined` is the only failure
+ * mode; nothing here throws.
  *
  * @param bytes - The bytes to decode.
  * @returns The decoded text, or `undefined` when `bytes` are not well-formed UTF-16LE.

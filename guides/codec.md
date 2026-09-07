@@ -1,10 +1,9 @@
 # Codec
 
-> The fleet's byte-to-text codings, as sound `encode` / `decode` / guard triples over `string` and
-> `Uint8Array` — RFC 4648 Base64, base64url, and hex, beside the UTF-8, ISO-8859-1, Windows-1252,
-> and UTF-16LE charsets — and a `measure*` that answers a coding's byte-side size question without
-> producing those bytes. Zero runtime dependencies, no error type, no options, no class. Source:
-> [`src/core`](../src/core). Published through `@orkestrel/codec`.
+> The fleet's byte-to-text codings: sound `encode` / `decode` / guard triples over `string` and
+> `Uint8Array` for RFC 4648 Base64, base64url, and hex and for the UTF-8, ISO-8859-1,
+> Windows-1252, and UTF-16LE charsets, beside a `measure*` that answers a coding's byte-side size
+> question without producing those bytes.
 
 A coding is a spec-named, stateless mapping with one canonical spelling per input, written as an
 `encode*` that produces only the canonical form, a `decode*` that accepts exactly that form and
@@ -13,7 +12,8 @@ direction accepts. Every function is pure ES: no `atob` / `btoa`, no `Buffer`, n
 `TextDecoder`, no `node:*`, and no dependency on another `@orkestrel` package. Totality is
 implemented rather than caught: codec ships no error type, no options bag, no class, and no type of
 its own. It is not a formats package — it does not compress, frame a stream, escape a document, map
-values into a store, or read JSON.
+values into a store, or read JSON. Source: [`src/core`](../src/core), published through
+`@orkestrel/codec` with no runtime dependency.
 
 ## The families
 
@@ -63,17 +63,17 @@ The RFC 4648 faces: the codings from [`helpers.ts`](../src/core/helpers.ts) and 
 and `Hex` the §8 one; the alphabets and the reverse lookups behind them are module data, not public
 API, because publishing an alphabet invites hand-rolling the coding it belongs to.
 
-| Name              | Kind     | Signature                                                | Behavior                                                                                                                                                              |
-| ----------------- | -------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `encodeBase64`    | function | `(bytes: Uint8Array) => string`                          | `bytes` spelled in the RFC 4648 §4 alphabet (`+`, `/`) with `=` padding — the canonical form, and the only form `decodeBase64` accepts. Total: encoding cannot fail.  |
-| `decodeBase64`    | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Exactly what `encodeBase64` writes, read back. Every other text — wrong alphabet, whitespace, wrong padding, a non-zero unused trailing bit — is `undefined`.         |
-| `isBase64`        | function | `(value: unknown) => value is string`                    | True for exactly the strings `decodeBase64` answers bytes for. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.                 |
-| `encodeBase64URL` | function | `(bytes: Uint8Array) => string`                          | `bytes` spelled in the RFC 4648 §5 url alphabet (`-`, `_`) with the padding removed — the canonical form, and the only form `decodeBase64URL` accepts. Total.         |
-| `decodeBase64URL` | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Exactly what `encodeBase64URL` writes, read back. A padded text, a `+`, or a `/` belongs to the §4 face and is `undefined` here.                                      |
-| `isBase64URL`     | function | `(value: unknown) => value is string`                    | True for exactly the strings `decodeBase64URL` answers bytes for. Total on any value.                                                                                 |
-| `encodeHex`       | function | `(bytes: Uint8Array) => string`                          | `bytes` spelled in the RFC 4648 §8 alphabet, lowercase, two digits per byte — the canonical form, and the only form `decodeHex` accepts. Total: encoding cannot fail. |
-| `decodeHex`       | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Exactly what `encodeHex` writes, read back. An uppercase digit, an odd length, a `0x` prefix, whitespace, and any foreign character are `undefined`.                  |
-| `isHex`           | function | `(value: unknown) => value is string`                    | True for exactly the strings `decodeHex` answers bytes for. Total on any value.                                                                                       |
+| Name              | Kind     | Signature                                                | Summary                                                                                                                                                                                                                                                                            |
+| ----------------- | -------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `encodeBase64`    | function | `(bytes: Uint8Array) => string`                          | Encodes a byte sequence as standard padded Base64, in the RFC 4648 §4 alphabet (`+`, `/`) with `=` padding. That spelling is the canonical form and the only form `decodeBase64` accepts. Total: encoding cannot fail.                                                             |
+| `decodeBase64`    | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Decodes canonical standard Base64 text into its bytes, reading back exactly what `encodeBase64` writes. Every other text is `undefined`: a wrong alphabet, embedded whitespace, wrong padding, and a non-zero unused trailing bit alike.                                           |
+| `isBase64`        | function | `(value: unknown) => value is string`                    | Checks whether a value is canonical standard Base64 text — true for exactly the strings `decodeBase64` answers bytes for. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.                                                                   |
+| `encodeBase64URL` | function | `(bytes: Uint8Array) => string`                          | Encodes a byte sequence as unpadded base64url, in the RFC 4648 §5 url alphabet (`-`, `_`) with the padding removed. That spelling is the canonical form and the only form `decodeBase64URL` accepts. Total: encoding cannot fail.                                                  |
+| `decodeBase64URL` | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Decodes canonical base64url text into its bytes, reading back exactly what `encodeBase64URL` writes. A padded text, a `+`, and a `/` belong to the §4 face and are `undefined` here.                                                                                               |
+| `isBase64URL`     | function | `(value: unknown) => value is string`                    | Checks whether a value is canonical base64url text — true for exactly the strings `decodeBase64URL` answers bytes for. A padded text, a `+`, and a `/` belong to the §4 face and are false. Total on any value: a number, `null`, or a byte sequence is false rather than a throw. |
+| `encodeHex`       | function | `(bytes: Uint8Array) => string`                          | Encodes a byte sequence as lowercase hex, in the RFC 4648 §8 base16 alphabet, two digits per byte. That spelling is the canonical form and the only form `decodeHex` accepts. Total: encoding cannot fail.                                                                         |
+| `decodeHex`       | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Decodes canonical lowercase hex text into its bytes, reading back exactly what `encodeHex` writes. An uppercase digit, an odd length, a `0x` prefix, whitespace, and any character outside the alphabet are `undefined`.                                                           |
+| `isHex`           | function | `(value: unknown) => value is string`                    | Checks whether a value is canonical lowercase hex text — true for exactly the strings `decodeHex` answers bytes for. An uppercase digit, an odd length, and a `0x` prefix are false. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.        |
 
 ### Measures
 
@@ -90,12 +90,12 @@ for a lone surrogate: the three bytes `TextEncoder` writes for the replacement c
 package keeps on every face — and a consumer wanting the replacement count calls the counter that
 produces it.
 
-| Name               | Kind     | Signature                               | Behavior                                                                                                                                                        |
-| ------------------ | -------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `measureBase64`    | function | `(text: string) => number \| undefined` | The byte length `decodeBase64` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeBase64` refuses.               |
-| `measureBase64URL` | function | `(text: string) => number \| undefined` | The byte length `decodeBase64URL` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeBase64URL` refuses.         |
-| `measureHex`       | function | `(text: string) => number \| undefined` | The byte length `decodeHex` would return for `text`, without allocating those bytes; `undefined` for exactly the texts `decodeHex` refuses.                     |
-| `measureUTF8`      | function | `(text: string) => number \| undefined` | The UTF-8 byte length `encodeUTF8` would write for `text`, without allocating those bytes; `undefined` for exactly the ill-formed strings `encodeUTF8` refuses. |
+| Name               | Kind     | Signature                               | Summary                                                                                                                                                                   |
+| ------------------ | -------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `measureBase64`    | function | `(text: string) => number \| undefined` | Measures the byte length canonical standard Base64 text decodes to, without allocating those bytes, and answers `undefined` for exactly the texts `decodeBase64` refuses. |
+| `measureBase64URL` | function | `(text: string) => number \| undefined` | Measures the byte length canonical base64url text decodes to, without allocating those bytes, and answers `undefined` for exactly the texts `decodeBase64URL` refuses.    |
+| `measureHex`       | function | `(text: string) => number \| undefined` | Measures the byte length canonical lowercase hex text decodes to, without allocating those bytes, and answers `undefined` for exactly the texts `decodeHex` refuses.      |
+| `measureUTF8`      | function | `(text: string) => number \| undefined` | Measures the UTF-8 byte length text encodes to, without allocating those bytes, and answers `undefined` for exactly the ill-formed strings `encodeUTF8` refuses.          |
 
 ### Charsets
 
@@ -106,20 +106,20 @@ ISO/IEC 8859-1 one, `Windows1252` the code page, and `UTF16LE` the little-endian
 `WINDOWS_1252_HIGH` — the written-out 0x80-0x9F table both Windows-1252 functions read — is module
 data rather than public API, for the reason the Base64 alphabets are.
 
-| Name                | Kind     | Signature                                                | Behavior                                                                                                                                                                               |
-| ------------------- | -------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `encodeUTF8`        | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | `text` spelled in the RFC 3629 shortest form. `undefined` for exactly the ill-formed strings — a lone surrogate has no UTF-8 spelling.                                                 |
-| `decodeUTF8`        | function | `(bytes: Uint8Array) => string \| undefined`             | Exactly what `encodeUTF8` writes, read back. An overlong, an encoded surrogate, a code point past U+10FFFF, and a truncated sequence are `undefined`. A leading BOM is kept as U+FEFF. |
-| `isUTF8`            | function | `(value: unknown) => value is Uint8Array`                | True for exactly the byte sequences `decodeUTF8` answers text for. Total on any value: a string, a sibling view kind, or a proxy is false rather than a throw.                         |
-| `encodeLatin1`      | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Each code unit written as the byte of the same value, which is the whole of ISO/IEC 8859-1. `undefined` when a code unit exceeds 0xFF.                                                 |
-| `decodeLatin1`      | function | `(bytes: Uint8Array) => string`                          | Each byte read as the code point of the same value. Total: every byte names a character, so this decoder has no failure mode and no `undefined` return.                                |
-| `isLatin1`          | function | `(value: unknown) => value is string`                    | True for exactly the strings `encodeLatin1` answers bytes for. This coding's guard names the encode side, because its decoder refuses nothing. Total on any value.                     |
-| `encodeWindows1252` | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | The inverse of the mapping `decodeWindows1252` reads. `undefined` for a character outside the code page's image, every C1 control included.                                            |
-| `decodeWindows1252` | function | `(bytes: Uint8Array) => string \| undefined`             | Identity for 0x00-0x7F and 0xA0-0xFF, and the written-out high table between them. Bytes 0x81, 0x8D, 0x8F, 0x90, and 0x9D name no character in the code page and are `undefined`.      |
-| `isWindows1252`     | function | `(value: unknown) => value is Uint8Array`                | True for exactly the byte sequences `decodeWindows1252` answers text for. Total on any value.                                                                                          |
-| `encodeUTF16LE`     | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Each code unit written low byte first. `undefined` for exactly the ill-formed strings — an unpaired surrogate is no UTF-16 sequence.                                                   |
-| `decodeUTF16LE`     | function | `(bytes: Uint8Array) => string \| undefined`             | Two bytes read per code unit, low byte first. An odd length and an unpaired surrogate are `undefined`. A leading FF FE is kept as U+FEFF.                                              |
-| `isUTF16LE`         | function | `(value: unknown) => value is Uint8Array`                | True for exactly the byte sequences `decodeUTF16LE` answers text for. Total on any value.                                                                                              |
+| Name                | Kind     | Signature                                                | Summary                                                                                                                                                                                                                                                                                                                                |
+| ------------------- | -------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `encodeUTF8`        | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Encodes text as UTF-8 bytes, in the RFC 3629 shortest form for every code point — the canonical spelling, and the only form `decodeUTF8` accepts. Ill-formed text is the one refusal: a lone surrogate has no UTF-8 spelling, so the answer is `undefined`.                                                                            |
+| `decodeUTF8`        | function | `(bytes: Uint8Array) => string \| undefined`             | Decodes UTF-8 bytes into their text, reading back exactly what `encodeUTF8` writes. An overlong spelling, an encoded surrogate, a code point past U+10FFFF, a truncated sequence, a stray continuation byte, and a lead byte outside the grammar are `undefined`. A leading BOM is kept as U+FEFF rather than stripped.                |
+| `isUTF8`            | function | `(value: unknown) => value is Uint8Array`                | Checks whether a value is bytes that decode as strict UTF-8 — true for exactly the byte sequences `decodeUTF8` answers text for. An overlong spelling, an encoded surrogate, and a truncated sequence are false. Total on any value: a string, `null`, a sibling view kind, or a proxy is false rather than a throw.                   |
+| `encodeLatin1`      | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Encodes text as ISO/IEC 8859-1 bytes, writing each code unit as the byte of the same value, which is the whole of that coding. A code unit past 0xFF has no byte here, so a text carrying one is `undefined`.                                                                                                                          |
+| `decodeLatin1`      | function | `(bytes: Uint8Array) => string`                          | Decodes ISO/IEC 8859-1 bytes into their text, reading each byte as the code point of the same value. Total: every byte names a character, so there is no failure mode and no `undefined` return.                                                                                                                                       |
+| `isLatin1`          | function | `(value: unknown) => value is string`                    | Checks whether a value is text ISO/IEC 8859-1 can encode — true for exactly the strings `encodeLatin1` answers bytes for. This coding's guard names the encode side because its decoder is total and refuses nothing there. Total on any value: a number, `null`, or a byte sequence is false rather than a throw.                     |
+| `encodeWindows1252` | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Encodes text as Windows-1252 bytes, inverting the mapping `decodeWindows1252` reads: the identity under U+0080 and across U+00A0-U+00FF, and the reverse of the high table between them. A character outside that image is `undefined`, every C1 control included.                                                                     |
+| `decodeWindows1252` | function | `(bytes: Uint8Array) => string \| undefined`             | Decodes Windows-1252 bytes into their text, reading 0x00-0x7F and 0xA0-0xFF as the identity and 0x80-0x9F through the written-out high table. Bytes 0x81, 0x8D, 0x8F, 0x90, and 0x9D name no character in the code page and are `undefined`.                                                                                           |
+| `isWindows1252`     | function | `(value: unknown) => value is Uint8Array`                | Checks whether a value is bytes that decode as Windows-1252 — true for exactly the byte sequences `decodeWindows1252` answers text for. Bytes 0x81, 0x8D, 0x8F, 0x90, and 0x9D are undefined slots of the code page and are false. Total on any value: a string, `null`, a sibling view kind, or a proxy is false rather than a throw. |
+| `encodeUTF16LE`     | function | `(text: string) => Uint8Array<ArrayBuffer> \| undefined` | Encodes text as little-endian UTF-16 bytes, writing each code unit as its low byte then its high byte, which is the whole coding. Ill-formed text is the one refusal: an unpaired surrogate is no UTF-16 sequence, so the answer is `undefined`.                                                                                       |
+| `decodeUTF16LE`     | function | `(bytes: Uint8Array) => string \| undefined`             | Decodes little-endian UTF-16 bytes into their text, reading two bytes per code unit, low byte first. An odd length and an unpaired surrogate are `undefined`. A leading FF FE is kept as U+FEFF rather than stripped.                                                                                                                  |
+| `isUTF16LE`         | function | `(value: unknown) => value is Uint8Array`                | Checks whether a value is bytes that decode as UTF-16LE — true for exactly the byte sequences `decodeUTF16LE` answers text for. An odd length and an unpaired surrogate are false. Total on any value: a string, `null`, a sibling view kind, or a proxy is false rather than a throw.                                                 |
 
 ## The laws
 
@@ -176,7 +176,7 @@ digits.
 ### The charset doors
 
 A charset closes its doors in the direction its own specification leaves open, so the refusals do
-not read alike across the four faces.
+not read alike across the charset faces.
 
 UTF-8 closes on both sides. `encodeUTF8` refuses ill-formed text, which is exactly what
 `String.prototype.isWellFormed` reports false for — a lone surrogate is a UTF-16 artifact with no
@@ -235,7 +235,7 @@ A coding belongs here when it is:
 - **guard-decidable** — membership in the accepted set is decidable from the value alone, so an
   `is*` can name it;
 - **both-lawed** — the round-trip law and the canonical-form law hold as written;
-- **wanted** — a real consumer in the fleet needs it now.
+- **wanted** — a real consumer in the fleet needs it.
 
 The charsets meet that bar in the inverted direction and nothing else changes. Each is fixed by a
 published specification, carries no configuration, and spells one canonical byte sequence per text.
@@ -478,7 +478,10 @@ measureUTF8('\ud800') // undefined — ill-formed text has no UTF-8 spelling
 - [`tests/config.test.ts`](../tests/config.test.ts) — the root configuration's aliases, projects,
   outputs, and the gate each proof runs from.
 - [`tests/guides.test.ts`](../tests/guides.test.ts) — this guide against the real surface, in both
-  directions, plus the transcribed fences.
+  directions, plus the transcribed fences and the equality gate: every `Summary` cell against its
+  declaration's description paragraph, the titled `Encode and decode a byte sequence` fence against
+  the `@example` block of that title (pinned so the titled pair cannot be retired silently), and the
+  README pitch against this guide's tagline.
 - [`tests/distribution.test.ts`](../tests/distribution.test.ts) — the packed package installs and
   resolves through its public exports.
 
