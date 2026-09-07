@@ -1,6 +1,6 @@
 {
 	"name": "@orkestrel/codec",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"description": "Spec-named byte-to-text codings and their measures as sound encode/decode/guard triples — RFC 4648 Base64, base64url, and hex, UTF-8, Latin-1, Windows-1252, and UTF-16LE — pure ES and canonical in both directions.",
 	"keywords": [
 		"base64",
@@ -72,7 +72,8 @@
 		"build:src": "npm run build:src:core",
 		"build:src:core": "vite build --config configs/src/vite.core.config.ts && npm run copy dist/src/core/index.d.ts dist/src/core/index.d.cts",
 		"prepack": "npm run build",
-		"prepublishOnly": "npm run format:check && npm run lint:check && npm run check && npm run build && npm test && npm run test:distribution -- --mode release"
+		"prepublishOnly": "npm run format:check && npm run lint:check && npm run check && npm run build && npm test && npm run test:distribution -- --mode release",
+		"docs": "node --experimental-strip-types scripts/docs.ts"
 	},
 	"devDependencies": {
 		"@microsoft/api-extractor": "^7.59.0",

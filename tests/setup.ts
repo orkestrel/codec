@@ -1,16 +1,16 @@
 import { encodeBase64, encodeBase64URL, encodeHex } from '@src/core'
 
-/** The RFC 4648 §4 alphabet, transcribed from the specification. */
+/** Transcribes the RFC 4648 §4 alphabet from the specification. */
 export const RFC_STANDARD = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-/** The RFC 4648 §5 url alphabet, transcribed from the specification. */
+/** Transcribes the RFC 4648 §5 url alphabet from the specification. */
 export const RFC_URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
-/** Every octet value, in one buffer. */
+/** Carries every octet value in one buffer. */
 export const OCTETS = Uint8Array.from({ length: 256 }, (_value, index) => index)
-/** The sextet population, so an alphabet sweep reads one index per character. */
+/** Carries the sextet population, so an alphabet sweep reads one index per character. */
 export const SEXTETS = Array.from({ length: 64 }, (_value, index) => index)
 
 /**
- * Every octet's hex spelling, in octet order.
+ * Carries every octet's hex spelling, in octet order.
  *
  * The digits come from the language's own radix conversion rather than from this package's table,
  * so the hex sweep compares `encodeHex` against a mechanism that can disagree with it instead of
@@ -20,7 +20,7 @@ export const HEX_OCTETS: readonly string[] = Array.from(OCTETS, (byte) =>
 	byte.toString(16).padStart(2, '0'),
 )
 
-/** Named canonical vectors: one value, its §4 spelling, and its §5 spelling. */
+/** Names canonical vectors: one value, its §4 spelling, and its §5 spelling. */
 export const VECTORS: ReadonlyArray<{
 	readonly name: string
 	readonly bytes: readonly number[]
@@ -40,7 +40,7 @@ export const VECTORS: ReadonlyArray<{
 ]
 
 /**
- * Mixed admitted and refused texts, each row stating what both faces owe it.
+ * Mixes admitted and refused texts, each row stating what both faces owe it.
  *
  * The expectations are written out rather than derived, so a decoder that starts admitting a
  * refused form fails here instead of agreeing with itself.
@@ -82,7 +82,7 @@ export const MEMBERSHIP: ReadonlyArray<{
 ]
 
 /**
- * Mixed admitted and refused hex texts, each row stating the bytes the §8 face owes it.
+ * Mixes admitted and refused hex texts, each row stating the bytes the §8 face owes it.
  *
  * `bytes` carries the decoded sequence for an admitted text and `undefined` for a refused one, so
  * one row pins `isHex` and `decodeHex` to the same answer. Each `reason` names the rule that
@@ -136,11 +136,11 @@ for (let index = 0; index < HEX_SWEEP_CHARACTERS.length ** 4; index += 1) {
 	}
 }
 
-/** The hex sweep population, deduplicated. */
+/** Deduplicates the hex sweep population. */
 export const HEX_SWEEP: readonly string[] = [...HEX_SWEEP_TEXTS]
 
 /**
- * Named measure vectors: one text and the decoded byte length each Base64 face owes it.
+ * Names measure vectors: one text and the decoded byte length each Base64 face owes it.
  *
  * The table carries a column per face, the way {@link MEMBERSHIP} does, because the padding a text
  * carries moves the `standard` and `url` answers in opposite directions: `'aGk='` measures on §4
@@ -167,7 +167,7 @@ export const MEASURES: ReadonlyArray<{
 	},
 ]
 
-/** Named hex measure vectors: one §8 text and the decoded byte length it owes, or `undefined`. */
+/** Names hex measure vectors: one §8 text and the decoded byte length it owes, or `undefined`. */
 export const HEX_MEASURES: ReadonlyArray<{
 	readonly text: string
 	readonly length: number | undefined
@@ -231,7 +231,7 @@ for (let index = 0; index < SWEEP_CHARACTERS.length ** 4; index += 1) {
 	}
 }
 
-/** The sweep population, deduplicated. */
+/** Deduplicates the sweep population. */
 export const SWEEP: readonly string[] = [...SWEEP_TEXTS]
 
 // ── The measure mutant population ────────────────────────────────────────────
@@ -288,8 +288,8 @@ for (let length = 1; length <= MUTANT_PREFIX; length += 1) {
 }
 
 /**
- * The deterministic mutant population: canonical encodings of octet prefixes, each also carried
- * under one substitution, insertion, or truncation.
+ * Carries the deterministic mutant population: canonical encodings of octet prefixes, each also
+ * present under one substitution, insertion, or truncation.
  *
  * Every measure sweeps every mutant, whichever face produced the base. The sound-triple law holds
  * over every string rather than over one face's own texts, so a §4 mutant is a refused hex text and
@@ -297,7 +297,10 @@ for (let length = 1; length <= MUTANT_PREFIX; length += 1) {
  */
 export const MEASURE_MUTANTS: readonly string[] = [...MUTANT_SET]
 
-/** Every text the Base64 measure law sweeps: the sweep population, both tables, and the mutants. */
+/**
+ * Collects every text the Base64 measure law sweeps: the sweep population, both tables, and the
+ * mutants.
+ */
 export const MEASURE_TEXTS: readonly string[] = [
 	...SWEEP,
 	...MEMBERSHIP.map((row) => row.text),
@@ -305,7 +308,10 @@ export const MEASURE_TEXTS: readonly string[] = [
 	...MEASURE_MUTANTS,
 ]
 
-/** Every text the hex measure law sweeps: the hex sweep population, both tables, and the mutants. */
+/**
+ * Collects every text the hex measure law sweeps: the hex sweep population, both tables, and the
+ * mutants.
+ */
 export const HEX_MEASURE_TEXTS: readonly string[] = [
 	...HEX_SWEEP,
 	...HEX_MEMBERSHIP.map((row) => row.text),
@@ -373,13 +379,15 @@ export function encodeUTF8Oracle(text: string): Uint8Array {
 	return UTF8_ENCODER.encode(text)
 }
 
-/** Every octet's ISO-8859-1 character, in octet order, read from the coding's own identity. */
+/**
+ * Carries every octet's ISO-8859-1 character, in octet order, read from the coding's own identity.
+ */
 export const LATIN1_OCTETS: readonly string[] = Array.from(OCTETS, (byte) =>
 	String.fromCharCode(byte),
 )
 
 /**
- * Every octet's Windows-1252 character according to the WHATWG index, in octet order.
+ * Carries every octet's Windows-1252 character according to the WHATWG index, in octet order.
  *
  * The index defines an entry for every byte, so the slots this coding refuses carry their C1 control
  * here. {@link WINDOWS_1252_UNDEFINED} names them, and the sweep excludes them.
@@ -389,7 +397,7 @@ export const WINDOWS_1252_OCTETS: readonly string[] = Array.from(OCTETS, (byte) 
 )
 
 /**
- * The Windows-1252 slots that name no character, written out rather than derived.
+ * Lists the Windows-1252 slots that name no character, written out rather than derived.
  *
  * These are the bytes `decodeWindows1252` refuses and the platform oracle admits, so they are both
  * the divergence the sweep excludes and the refusal the suite pins directly.
@@ -399,7 +407,7 @@ export const WINDOWS_1252_UNDEFINED: readonly number[] = Object.freeze([
 ])
 
 /**
- * The published Windows-1252 high band, hand-transcribed here from the code page's own table.
+ * Transcribes the published Windows-1252 high band here, by hand, from the code page's own table.
  *
  * This is the second mechanism for `WINDOWS_1252_HIGH` in `src/core/constants.ts`, the way
  * {@link RFC_STANDARD} is the second mechanism for the Base64 alphabet. The platform oracle cannot
@@ -489,10 +497,10 @@ for (let index = 0; index < TEXT_CHARACTERS.length ** 3; index += 1) {
 	}
 }
 
-/** The well-formed text population, deduplicated. */
+/** Deduplicates the well-formed text population. */
 export const TEXTS: readonly string[] = [...TEXT_SET]
 
-/** Ill-formed texts, each carrying a surrogate no coding over code points can spell. */
+/** Carries ill-formed texts, each with a surrogate no coding over code points can spell. */
 export const ILL_FORMED: ReadonlyArray<{ readonly text: string; readonly reason: string }> = [
 	{ text: '\ud800', reason: 'a lone lead surrogate' },
 	{ text: '\udfff', reason: 'a lone trail surrogate' },
@@ -503,8 +511,8 @@ export const ILL_FORMED: ReadonlyArray<{ readonly text: string; readonly reason:
 ]
 
 /**
- * The UTF-8 width thresholds and the surrogate-range outer boundaries, each with the byte length
- * its code point encodes to.
+ * Carries the UTF-8 width thresholds and the surrogate-range outer boundaries, each with the byte
+ * length its code point encodes to.
  *
  * The thresholds are where the encoded width changes, so a width rule off by one lands on a row
  * here. U+D7FF and U+E000 are not thresholds: they sit one code point on either side of the
@@ -530,7 +538,7 @@ export const UTF8_BOUNDARIES: ReadonlyArray<{
 ]
 
 /**
- * Named UTF-8 measure vectors: one text and the wire byte length it encodes to, or `undefined`.
+ * Names UTF-8 measure vectors: one text and the wire byte length it encodes to, or `undefined`.
  *
  * The rows are written out rather than derived, so a measure that starts counting a width wrong
  * fails here as well as against the encoder.
@@ -550,8 +558,8 @@ export const UTF8_MEASURES: ReadonlyArray<{
 ]
 
 /**
- * Every text the UTF-8 measure law sweeps: the well-formed population, the ill-formed rows, and
- * one text per boundary code point.
+ * Collects every text the UTF-8 measure law sweeps: the well-formed population, the ill-formed
+ * rows, and one text per boundary code point.
  *
  * The sound-triple law holds over every string rather than over the admitted ones alone, so the
  * ill-formed rows are population here rather than a separate case: each one owes `undefined` on
@@ -564,7 +572,7 @@ export const UTF8_MEASURE_TEXTS: readonly string[] = [
 	...UTF8_MEASURES.map((row) => row.text),
 ]
 
-/** Byte sequences strict UTF-8 refuses, each pinned with the rule that refuses it. */
+/** Lists byte sequences strict UTF-8 refuses, each pinned with the rule that refuses it. */
 export const UTF8_REFUSALS: ReadonlyArray<{
 	readonly bytes: readonly number[]
 	readonly reason: string
@@ -587,7 +595,7 @@ export const UTF8_REFUSALS: ReadonlyArray<{
 	{ bytes: [0x68, 0xc0, 0x80, 0x69], reason: 'an overlong inside otherwise valid text' },
 ]
 
-/** Byte sequences well-formed UTF-16LE refuses, each pinned with the rule that refuses it. */
+/** Lists byte sequences well-formed UTF-16LE refuses, each pinned with the rule that refuses it. */
 export const UTF16_REFUSALS: ReadonlyArray<{
 	readonly bytes: readonly number[]
 	readonly reason: string
