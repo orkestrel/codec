@@ -274,6 +274,9 @@ of this package.
 
 ### Encode and decode a byte sequence
 
+This fence builds the round trip through standard Base64, from bytes to text and back, including
+the empty sequence.
+
 ```ts
 import { decodeBase64, encodeBase64 } from '@orkestrel/codec'
 
@@ -284,6 +287,8 @@ decodeBase64('') // Uint8Array []
 ```
 
 ### Reach the url face
+
+This fence builds the base64url encoding beside the padded spellings it refuses.
 
 ```ts
 import { decodeBase64URL, encodeBase64URL } from '@orkestrel/codec'
@@ -296,6 +301,9 @@ decodeBase64URL('+/+/') // undefined — those characters belong to §4
 ```
 
 ### Meet the canonical refusals
+
+This fence builds the exact texts standard Base64 refuses, beside the canonical spelling each one
+was reaching for.
 
 ```ts
 import { decodeBase64, encodeBase64, isBase64 } from '@orkestrel/codec'
@@ -312,6 +320,9 @@ isBase64('aa==') // false
 
 ### Ask a value whether a decoder would take it
 
+This fence builds the guard calls that answer whether a value belongs to each Base64 face, without
+decoding it.
+
 ```ts
 import { isBase64, isBase64URL } from '@orkestrel/codec'
 
@@ -323,6 +334,9 @@ isBase64URL(42) // false — total on any value, never a throw
 ```
 
 ### Drive the round-trip and canonical-form laws
+
+This fence builds both laws on one buffer: decoding an encoding back to the original bytes, then
+re-encoding the decoded text to itself.
 
 ```ts
 import { decodeBase64, encodeBase64, isBase64 } from '@orkestrel/codec'
@@ -341,6 +355,9 @@ if (decoded !== undefined) encodeBase64(decoded) // === text
 
 ### Read the hex face
 
+This fence builds the lowercase hex round trip beside the uppercase and prefixed spellings it
+refuses.
+
 ```ts
 import { decodeHex, encodeHex, isHex } from '@orkestrel/codec'
 
@@ -354,6 +371,9 @@ isHex('AB') // false
 ```
 
 ### Encode and decode through a charset
+
+This fence builds each charset's own round trip and its refusals, from UTF-8 through Windows-1252
+to UTF-16LE.
 
 ```ts
 import {
@@ -391,6 +411,9 @@ decodeUTF16LE(new Uint8Array([0x00, 0xd8])) // undefined — a lead surrogate wi
 ```
 
 ### Measure without producing the bytes
+
+This fence builds each measure's byte-length answer beside the same texts its decoder or encoder
+would refuse.
 
 ```ts
 import { measureBase64, measureBase64URL, measureHex, measureUTF8 } from '@orkestrel/codec'

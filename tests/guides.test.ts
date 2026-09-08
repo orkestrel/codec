@@ -1,10 +1,6 @@
 // The consumer-side guides-parity drop-in: runs `@orkestrel/guide`'s checks against
 // this repo's own `guides/README.md` manifest. The constants that follow are this
-// package's own, as is the executed section that closes the file. Every flagship fence
-// in `guides/codec.md` is transcribed at the end of this file and asserted against what
-// its comments claim: name resolution is not a behavioural proof, so a fence documenting a
-// value the code contradicts is exactly what the transcriptions catch. Change a fence,
-// change its transcription.
+// package's own, as is the executed section that closes the file.
 
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
