@@ -64,7 +64,7 @@
 		"test:src:core": "vitest run --config vite.config.ts --no-cache --reporter=dot --project src:core",
 		"test:policy": "vitest run --config vite.config.ts --no-cache --reporter=dot --project policy",
 		"test:config": "vitest run --config vite.config.ts --no-cache --reporter=dot --project config",
-		"test:guides": "vitest run --config vite.config.ts --no-cache --reporter=dot --project guides",
+		"test:guides": "node --experimental-strip-types tests/guides.test.ts",
 		"test:probe": "vitest run --config vite.config.ts --no-cache --reporter=verbose --project probe",
 		"test:bench": "vitest bench --config vite.config.ts --no-cache --project probe",
 		"test:distribution": "vitest run --config vite.config.ts --no-cache --reporter=dot --project distribution",
@@ -72,8 +72,7 @@
 		"build:src": "npm run build:src:core",
 		"build:src:core": "vite build --config configs/src/vite.core.config.ts && npm run copy dist/src/core/index.d.ts dist/src/core/index.d.cts",
 		"prepack": "npm run build",
-		"prepublishOnly": "npm run format:check && npm run lint:check && npm run check && npm run build && npm test && npm run test:distribution -- --mode release",
-		"docs": "node --experimental-strip-types scripts/docs.ts"
+		"prepublishOnly": "npm run format:check && npm run lint:check && npm run check && npm run build && npm test && npm run test:distribution -- --mode release"
 	},
 	"devDependencies": {
 		"@microsoft/api-extractor": "^7.59.0",
