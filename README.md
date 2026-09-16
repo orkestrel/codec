@@ -6,9 +6,10 @@
 > question without producing those bytes.
 
 Import the face you need from `@orkestrel/codec` and call it: every export is a plain function over
-`string` and `Uint8Array`, with no options bag, no class, no error type, and no runtime dependency.
-A decoder reports refusal as `undefined` and a guard reports it as `false`, so there is nothing to
-catch and nothing to configure. Source: [`src/core`](src/core). Part of the `@orkestrel` line.
+`string` and `Uint8Array`, with no options bag, no class, and no error type. Runtime type tests
+come from `@orkestrel/contract`. A decoder reports refusal as `undefined` and a guard reports it as
+`false`, so there is nothing to catch and nothing to configure. Source: [`src/core`](src/core). Part of
+the `@orkestrel` line.
 
 ## Install
 
@@ -20,7 +21,7 @@ npm install @orkestrel/codec
 
 - Node.js >= 22.12.0, matching the `engines` field in `package.json`
 - ESM and CommonJS entry points, selected by the `exports` field in `package.json`
-- No runtime dependencies, so installing this package installs nothing else
+- Runtime dependency: `@orkestrel/contract`
 
 The RFC 4648 faces and their guards are the guide's [Codings](guides/codec.md#codings) section, and
 the byte-side sizes beside them are its [Measures](guides/codec.md#measures) section.

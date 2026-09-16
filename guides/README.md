@@ -16,6 +16,11 @@ A dual-axis index into this repository's guides — by concept, and by directory
 
 ## Dependency reference
 
+[`contract.md`](contract.md) is a byte-identical mirror of the guide for `@orkestrel/contract` — this
+package's runtime dependency. It documents **that package's** surface (guards, combinators, parsers,
+and the shape DSL), not anything sourced in this repository; it is kept here so a reader of the
+codec guards can see the primitives they call without leaving this guide set.
+
 [`guide.md`](guide.md) is a byte-identical mirror of the guide for `@orkestrel/guide` — the
 devDependency powering this repository's guides-parity suite
 ([`tests/guides.test.ts`](../tests/guides.test.ts)). It documents **that package's** surface

@@ -7,6 +7,7 @@ import {
 	decodeWindows1252,
 	encodeLatin1,
 } from './helpers.js'
+import { isArrayBufferView, isString, isUint8Array } from '@orkestrel/contract'
 
 /**
  * Checks whether a value is canonical standard Base64 text — true for exactly the strings
@@ -27,7 +28,7 @@ import {
  * ```
  */
 export function isBase64(value: unknown): value is string {
-	return typeof value === 'string' && decodeBase64(value) !== undefined
+	return isString(value) && decodeBase64(value) !== undefined
 }
 
 /**
@@ -50,7 +51,7 @@ export function isBase64(value: unknown): value is string {
  * ```
  */
 export function isBase64URL(value: unknown): value is string {
-	return typeof value === 'string' && decodeBase64URL(value) !== undefined
+	return isString(value) && decodeBase64URL(value) !== undefined
 }
 
 /**
@@ -72,7 +73,7 @@ export function isBase64URL(value: unknown): value is string {
  * ```
  */
 export function isHex(value: unknown): value is string {
-	return typeof value === 'string' && decodeHex(value) !== undefined
+	return isString(value) && decodeHex(value) !== undefined
 }
 
 // === The charset guards
@@ -84,11 +85,11 @@ export function isHex(value: unknown): value is string {
 // UTF-8's text side ships no guard at all, because `String.prototype.isWellFormed` already names
 // exactly the strings `encodeUTF8` accepts and wrapping it would add nothing.
 //
-// `ArrayBuffer.isView` carries the totality that `typeof value === 'string'` carries on the text
-// side, and it is not redundant beside `instanceof`: a revoked proxy and a hostile prototype both
-// make a bare `instanceof Uint8Array` throw, while `ArrayBuffer.isView` reads an internal slot and
-// answers false. Reading it first also refuses a proxy wrapping a real byte array, whose `length`
-// trap could otherwise walk a decoder past the bytes it actually holds.
+// `isArrayBufferView` contains `ArrayBuffer.isView`, which reads the view internal slot the way
+// `isString` reads a string. A revoked proxy and a hostile prototype both make a bare
+// `instanceof Uint8Array` throw; `isUint8Array` contains that throw. Reading the view slot first
+// also refuses a proxy wrapping a real byte array, whose `length` trap could otherwise walk a
+// decoder past the bytes it actually holds.
 
 /**
  * Checks whether a value is bytes that decode as strict UTF-8 — true for exactly the byte
@@ -110,7 +111,7 @@ export function isHex(value: unknown): value is string {
  * ```
  */
 export function isUTF8(value: unknown): value is Uint8Array {
-	return ArrayBuffer.isView(value) && value instanceof Uint8Array && decodeUTF8(value) !== undefined
+	return isArrayBufferView(value) && isUint8Array(value) && decodeUTF8(value) !== undefined
 }
 
 /**
@@ -133,7 +134,7 @@ export function isUTF8(value: unknown): value is Uint8Array {
  * ```
  */
 export function isLatin1(value: unknown): value is string {
-	return typeof value === 'string' && encodeLatin1(value) !== undefined
+	return isString(value) && encodeLatin1(value) !== undefined
 }
 
 /**
@@ -156,11 +157,7 @@ export function isLatin1(value: unknown): value is string {
  * ```
  */
 export function isWindows1252(value: unknown): value is Uint8Array {
-	return (
-		ArrayBuffer.isView(value) &&
-		value instanceof Uint8Array &&
-		decodeWindows1252(value) !== undefined
-	)
+	return isArrayBufferView(value) && isUint8Array(value) && decodeWindows1252(value) !== undefined
 }
 
 /**
@@ -182,7 +179,5 @@ export function isWindows1252(value: unknown): value is Uint8Array {
  * ```
  */
 export function isUTF16LE(value: unknown): value is Uint8Array {
-	return (
-		ArrayBuffer.isView(value) && value instanceof Uint8Array && decodeUTF16LE(value) !== undefined
-	)
+	return isArrayBufferView(value) && isUint8Array(value) && decodeUTF16LE(value) !== undefined
 }
