@@ -62,38 +62,44 @@ describe('setup oracles', () => {
 	it('decodes UTF-8 widths and preserves a leading BOM', () => {
 		expect(
 			decodeUTF8Oracle(
-				new Uint8Array([0xef, 0xbb, 0xbf, 0x41, 0xc2, 0xa2, 0xe2, 0x82, 0xac, 0xf0, 0x9f, 0x98, 0x80]),
+				new Uint8Array([
+					0xef, 0xbb, 0xbf, 0x41, 0xc2, 0xa2, 0xe2, 0x82, 0xac, 0xf0, 0x9f, 0x98, 0x80,
+				]),
 			),
 		).toBe('\ufeffA\u00a2\u20ac\u{1f600}')
 	})
 
 	it('reports ill-formed UTF-8 as undefined', () => {
 		const bytes = new Uint8Array([0xc0, 0x80])
-		expect(() => new TextDecoder('utf-8', { fatal: true }).decode(bytes)).toThrow()
+		expect(() => new TextDecoder('utf-8', { fatal: true }).decode(bytes)).toThrow(TypeError)
 		expect(decodeUTF8Oracle(bytes)).toBeUndefined()
 	})
 
 	it('decodes UTF-16LE code units and surrogate pairs while preserving a leading BOM', () => {
 		expect(
-			decodeUTF16LEOracle(new Uint8Array([0xff, 0xfe, 0x41, 0x00, 0xac, 0x20, 0x3d, 0xd8, 0x00, 0xde])),
+			decodeUTF16LEOracle(
+				new Uint8Array([0xff, 0xfe, 0x41, 0x00, 0xac, 0x20, 0x3d, 0xd8, 0x00, 0xde]),
+			),
 		).toBe('\ufeffA\u20ac\u{1f600}')
 	})
 
 	it('reports an incomplete UTF-16LE code unit as undefined', () => {
 		const bytes = new Uint8Array([0x41])
-		expect(() => new TextDecoder('utf-16le', { fatal: true }).decode(bytes)).toThrow()
+		expect(() => new TextDecoder('utf-16le', { fatal: true }).decode(bytes)).toThrow(TypeError)
 		expect(decodeUTF16LEOracle(bytes)).toBeUndefined()
 	})
 
 	it('reports an unpaired UTF-16LE surrogate as undefined', () => {
 		const bytes = new Uint8Array([0x00, 0xd8])
-		expect(() => new TextDecoder('utf-16le', { fatal: true }).decode(bytes)).toThrow()
+		expect(() => new TextDecoder('utf-16le', { fatal: true }).decode(bytes)).toThrow(TypeError)
 		expect(decodeUTF16LEOracle(bytes)).toBeUndefined()
 	})
 
 	it('encodes UTF-8 widths and a leading BOM to handwritten bytes', () => {
 		expect(encodeUTF8Oracle('\ufeffA\u00a2\u20ac\u{1f600}')).toEqual(
-			new Uint8Array([0xef, 0xbb, 0xbf, 0x41, 0xc2, 0xa2, 0xe2, 0x82, 0xac, 0xf0, 0x9f, 0x98, 0x80]),
+			new Uint8Array([
+				0xef, 0xbb, 0xbf, 0x41, 0xc2, 0xa2, 0xe2, 0x82, 0xac, 0xf0, 0x9f, 0x98, 0x80,
+			]),
 		)
 	})
 
