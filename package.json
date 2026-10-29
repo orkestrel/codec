@@ -67,7 +67,7 @@
 		"test:setup": "vitest run --config vite.config.ts --no-cache --reporter=dot --project setup",
 		"test:guides": "node --experimental-strip-types tests/guides.test.ts",
 		"test:probe": "vitest run --config vite.config.ts --no-cache --reporter=verbose --project probe",
-		"test:bench": "vitest bench --config vite.config.ts --no-cache --project probe",
+		"test:bench": "vitest bench --config vite.config.ts --no-cache --project \"probe (bench)\" --mode benchmark",
 		"test:distribution": "vitest run --config vite.config.ts --no-cache --reporter=dot --project distribution",
 		"build": "npm run clean && npm run build:src",
 		"build:src": "npm run build:src:core",
