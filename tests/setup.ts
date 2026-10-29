@@ -1,5 +1,18 @@
 import { encodeBase64, encodeBase64URL, encodeHex } from '@src/core'
 
+/** Builds the distinct prefixes of every fixed-width word in least-significant-digit order. */
+export function buildCodecTexts(characters: readonly string[], width: number): readonly string[] {
+	const words = Array.from({ length: characters.length ** width }, (_, index) => {
+		const parts = Array.from(
+			{ length: width },
+			(_character, position) =>
+				characters[Math.floor(index / characters.length ** position) % characters.length] ?? '',
+		)
+		return parts.map((_part, position) => parts.slice(0, position + 1).join(''))
+	})
+	return [...new Set(['', ...words.flat()])]
+}
+
 /** Transcribes the RFC 4648 §4 alphabet from the specification. */
 export const RFC_STANDARD = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 /** Transcribes the RFC 4648 §5 url alphabet from the specification. */
@@ -123,21 +136,8 @@ export const HEX_SWEEP_CHARACTERS: readonly string[] = [
 	'\n',
 ]
 
-// Every hex-sweep text of length four or less over those characters, built by counting in base
-// HEX_SWEEP_CHARACTERS.length and keeping each prefix along the way.
-const HEX_SWEEP_TEXTS = new Set<string>([''])
-for (let index = 0; index < HEX_SWEEP_CHARACTERS.length ** 4; index += 1) {
-	let text = ''
-	let remainder = index
-	for (let position = 0; position < 4; position += 1) {
-		text += HEX_SWEEP_CHARACTERS[remainder % HEX_SWEEP_CHARACTERS.length] ?? ''
-		remainder = Math.floor(remainder / HEX_SWEEP_CHARACTERS.length)
-		HEX_SWEEP_TEXTS.add(text)
-	}
-}
-
 /** Deduplicates the hex sweep population. */
-export const HEX_SWEEP: readonly string[] = [...HEX_SWEEP_TEXTS]
+export const HEX_SWEEP: readonly string[] = buildCodecTexts(HEX_SWEEP_CHARACTERS, 4)
 
 /**
  * Names measure vectors: one text and the decoded byte length each Base64 face owes it.
@@ -218,21 +218,8 @@ export const SWEEP_CHARACTERS: readonly string[] = [
 	'*',
 ]
 
-// Every text of length four or less over those characters, built by counting in base
-// SWEEP_CHARACTERS.length and keeping each prefix along the way.
-const SWEEP_TEXTS = new Set<string>([''])
-for (let index = 0; index < SWEEP_CHARACTERS.length ** 4; index += 1) {
-	let text = ''
-	let remainder = index
-	for (let position = 0; position < 4; position += 1) {
-		text += SWEEP_CHARACTERS[remainder % SWEEP_CHARACTERS.length] ?? ''
-		remainder = Math.floor(remainder / SWEEP_CHARACTERS.length)
-		SWEEP_TEXTS.add(text)
-	}
-}
-
 /** Deduplicates the sweep population. */
-export const SWEEP: readonly string[] = [...SWEEP_TEXTS]
+export const SWEEP: readonly string[] = buildCodecTexts(SWEEP_CHARACTERS, 4)
 
 // ── The measure mutant population ────────────────────────────────────────────
 //
@@ -256,36 +243,32 @@ const MUTANT_SEED = 0x1252c0de
 
 // The draws per mutant are the mutation, the position, and the character, over every base.
 const MUTANT_DRAWS: number[] = []
-let mutantState = MUTANT_SEED
-for (let index = 0; index < MUTANT_PREFIX * 3 * MUTANT_ROUNDS * 3; index += 1) {
-	mutantState ^= mutantState << 13
-	mutantState ^= mutantState >>> 17
-	mutantState ^= mutantState << 5
-	mutantState >>>= 0
-	MUTANT_DRAWS.push(mutantState)
+for (const index of Array.from({ length: MUTANT_PREFIX * 3 * MUTANT_ROUNDS * 3 }).keys()) {
+	const previous = MUTANT_DRAWS[index - 1] ?? MUTANT_SEED
+	const left = previous ^ (previous << 13)
+	const right = left ^ (left >>> 17)
+	MUTANT_DRAWS.push((right ^ (right << 5)) >>> 0)
 }
 
-const MUTANT_SET = new Set<string>()
-let mutantCursor = 0
-for (let length = 1; length <= MUTANT_PREFIX; length += 1) {
-	const bytes = OCTETS.slice(0, length)
-	for (const base of [encodeBase64(bytes), encodeBase64URL(bytes), encodeHex(bytes)]) {
-		MUTANT_SET.add(base)
-		for (let round = 0; round < MUTANT_ROUNDS; round += 1) {
-			const mutation = (MUTANT_DRAWS[mutantCursor] ?? 0) % 3
-			const position = (MUTANT_DRAWS[mutantCursor + 1] ?? 0) % base.length
+const MUTANT_BASES = Array.from({ length: MUTANT_PREFIX }, (_, index) => {
+	const bytes = OCTETS.slice(0, index + 1)
+	return [encodeBase64(bytes), encodeBase64URL(bytes), encodeHex(bytes)].flatMap((base, face) => [
+		base,
+		...Array.from({ length: MUTANT_ROUNDS }, (_draw, round) => {
+			const cursor = ((index * 3 + face) * MUTANT_ROUNDS + round) * 3
+			const mutation = (MUTANT_DRAWS[cursor] ?? 0) % 3
+			const position = (MUTANT_DRAWS[cursor + 1] ?? 0) % base.length
 			const character = MUTANT_CHARACTERS.charAt(
-				(MUTANT_DRAWS[mutantCursor + 2] ?? 0) % MUTANT_CHARACTERS.length,
+				(MUTANT_DRAWS[cursor + 2] ?? 0) % MUTANT_CHARACTERS.length,
 			)
-			mutantCursor += 3
-			if (mutation === 0)
-				MUTANT_SET.add(base.slice(0, position) + character + base.slice(position + 1))
-			else if (mutation === 1) {
-				MUTANT_SET.add(base.slice(0, position) + character + base.slice(position))
-			} else MUTANT_SET.add(base.slice(0, position))
-		}
-	}
-}
+			return mutation === 0
+				? base.slice(0, position) + character + base.slice(position + 1)
+				: mutation === 1
+					? base.slice(0, position) + character + base.slice(position)
+					: base.slice(0, position)
+		}),
+	])
+})
 
 /**
  * Carries the deterministic mutant population: canonical encodings of octet prefixes, each also
@@ -295,7 +278,7 @@ for (let length = 1; length <= MUTANT_PREFIX; length += 1) {
  * over every string rather than over one face's own texts, so a §4 mutant is a refused hex text and
  * a hex mutant is a refused §5 text, and each measure owes `undefined` on both walks for it.
  */
-export const MEASURE_MUTANTS: readonly string[] = [...MUTANT_SET]
+export const MEASURE_MUTANTS: readonly string[] = [...new Set(MUTANT_BASES.flat())]
 
 /**
  * Collects every text the Base64 measure law sweeps: the sweep population, both tables, and the
@@ -483,22 +466,8 @@ export const TEXT_CHARACTERS: readonly string[] = [
 	'\u{10ffff}',
 ]
 
-// Every well-formed text of three characters or fewer over those characters, built by counting in
-// base TEXT_CHARACTERS.length and keeping each prefix along the way. Every member is well-formed by
-// construction: no character here is a lone surrogate, and an astral member carries its own pair.
-const TEXT_SET = new Set<string>([''])
-for (let index = 0; index < TEXT_CHARACTERS.length ** 3; index += 1) {
-	let text = ''
-	let remainder = index
-	for (let position = 0; position < 3; position += 1) {
-		text += TEXT_CHARACTERS[remainder % TEXT_CHARACTERS.length] ?? ''
-		remainder = Math.floor(remainder / TEXT_CHARACTERS.length)
-		TEXT_SET.add(text)
-	}
-}
-
 /** Deduplicates the well-formed text population. */
-export const TEXTS: readonly string[] = [...TEXT_SET]
+export const TEXTS: readonly string[] = buildCodecTexts(TEXT_CHARACTERS, 3)
 
 /** Carries ill-formed texts, each with a surrogate no coding over code points can spell. */
 export const ILL_FORMED: ReadonlyArray<{ readonly text: string; readonly reason: string }> = [

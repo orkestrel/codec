@@ -79,7 +79,7 @@ describe('the round-trip law — decoding an encoding returns the bytes', () => 
 	})
 
 	it('round-trips every padding residue', () => {
-		for (let length = 0; length <= 3; length += 1) {
+		for (const length of Array.from({ length: 4 }).keys()) {
 			const bytes = OCTETS.slice(0, length)
 
 			expect(decodeBase64(encodeBase64(bytes)), `length ${length}`).toStrictEqual(bytes)
@@ -98,20 +98,21 @@ describe('the round-trip law — decoding an encoding returns the bytes', () => 
 	})
 
 	it('round-trips every byte pair, the residue class the unused-bit rule governs', () => {
-		const drift: string[] = []
-		for (const first of OCTETS) {
-			for (const second of OCTETS) {
+		const drift = Array.from(OCTETS).flatMap((first) =>
+			Array.from(OCTETS).flatMap((second) => {
+				const differences: string[] = []
 				const bytes = new Uint8Array([first, second])
 				const standard = decodeBase64(encodeBase64(bytes))
 				const url = decodeBase64URL(encodeBase64URL(bytes))
 				if (standard === undefined || standard[0] !== first || standard[1] !== second) {
-					drift.push(`§4 ${first},${second}`)
+					differences.push(`§4 ${first},${second}`)
 				}
 				if (url === undefined || url[0] !== first || url[1] !== second) {
-					drift.push(`§5 ${first},${second}`)
+					differences.push(`§5 ${first},${second}`)
 				}
-			}
-		}
+				return differences
+			}),
+		)
 		expect(drift).toEqual([])
 	})
 
@@ -129,16 +130,15 @@ describe('the round-trip law — decoding an encoding returns the bytes', () => 
 	})
 
 	it('round-trips every byte pair through the hex face', () => {
-		const drift: string[] = []
-		for (const first of OCTETS) {
-			for (const second of OCTETS) {
+		const drift = Array.from(OCTETS).flatMap((first) =>
+			Array.from(OCTETS).flatMap((second) => {
 				const bytes = new Uint8Array([first, second])
 				const decoded = decodeHex(encodeHex(bytes))
-				if (decoded === undefined || decoded[0] !== first || decoded[1] !== second) {
-					drift.push(`§8 ${first},${second}`)
-				}
-			}
-		}
+				return decoded === undefined || decoded[0] !== first || decoded[1] !== second
+					? [`§8 ${first},${second}`]
+					: []
+			}),
+		)
 		expect(drift).toEqual([])
 	})
 })
@@ -218,13 +218,16 @@ describe('the measure law — a measure answers the byte-side size without produ
 	})
 
 	it('agrees with every decoder on every canonical encoding of a byte prefix', () => {
-		const drift: string[] = []
-		for (let length = 0; length <= OCTETS.length; length += 1) {
+		const results = Array.from({ length: OCTETS.length + 1 }, (_, length) => {
+			const differences: string[] = []
 			const bytes = OCTETS.slice(0, length)
-			if (measureBase64(encodeBase64(bytes)) !== length) drift.push(`§4 length ${length}`)
-			if (measureBase64URL(encodeBase64URL(bytes)) !== length) drift.push(`§5 length ${length}`)
-			if (measureHex(encodeHex(bytes)) !== length) drift.push(`§8 length ${length}`)
-		}
+			if (measureBase64(encodeBase64(bytes)) !== length) differences.push(`§4 length ${length}`)
+			if (measureBase64URL(encodeBase64URL(bytes)) !== length)
+				differences.push(`§5 length ${length}`)
+			if (measureHex(encodeHex(bytes)) !== length) differences.push(`§8 length ${length}`)
+			return differences
+		})
+		const drift = results.flat()
 		expect(drift).toEqual([])
 	})
 
@@ -297,18 +300,20 @@ describe('the measure law — a measure answers the byte-side size without produ
 	// arithmetic behind the guard the encoder already applies — a measure there would name no walk
 	// its encoder skips. This case is what breaks if that stops being true.
 	it('leaves the fixed-width charsets no size question a measure would answer', () => {
-		const drift: string[] = []
-		let admitted = 0
-		for (const text of TEXTS) {
+		const results = TEXTS.map((text) => {
+			const differences: string[] = []
 			const latin1 = encodeLatin1(text)
 			const windows = encodeWindows1252(text)
 			const utf16 = encodeUTF16LE(text)
-			if (latin1 !== undefined && latin1.length !== text.length) drift.push(`Latin-1 ${text}`)
+			if (latin1 !== undefined && latin1.length !== text.length) differences.push(`Latin-1 ${text}`)
 			if (windows !== undefined && windows.length !== text.length)
-				drift.push(`Windows-1252 ${text}`)
-			if (utf16 === undefined || utf16.length !== text.length * 2) drift.push(`UTF-16LE ${text}`)
-			if (latin1 !== undefined) admitted += 1
-		}
+				differences.push(`Windows-1252 ${text}`)
+			if (utf16 === undefined || utf16.length !== text.length * 2)
+				differences.push(`UTF-16LE ${text}`)
+			return { differences, admitted: latin1 !== undefined }
+		})
+		const admitted = results.filter((result) => result.admitted).length
+		const drift = results.flatMap((result) => result.differences)
 
 		expect(admitted).toBeGreaterThan(0)
 		expect(drift).toEqual([])
@@ -384,16 +389,17 @@ describe('the alphabets', () => {
 
 describe('the round-trip law — the charset codings', () => {
 	it('round-trips every well-formed text through UTF-8 and UTF-16LE', () => {
-		const drift: string[] = []
-		for (const text of TEXTS) {
+		const drift = TEXTS.flatMap((text) => {
+			const differences: string[] = []
 			const utf8 = encodeUTF8(text)
 			const utf16 = encodeUTF16LE(text)
 			if (utf8 === undefined || decodeUTF8(utf8) !== text)
-				drift.push(`UTF-8 ${JSON.stringify(text)}`)
+				differences.push(`UTF-8 ${JSON.stringify(text)}`)
 			if (utf16 === undefined || decodeUTF16LE(utf16) !== text) {
-				drift.push(`UTF-16LE ${JSON.stringify(text)}`)
+				differences.push(`UTF-16LE ${JSON.stringify(text)}`)
 			}
-		}
+			return differences
+		})
 
 		expect(TEXTS.length).toBeGreaterThan(0)
 		expect(drift).toEqual([])
@@ -425,17 +431,15 @@ describe('the round-trip law — the charset codings', () => {
 	})
 
 	it('round-trips every defined Windows-1252 byte in both directions', () => {
-		const drift: string[] = []
-		for (const value of OCTETS) {
+		const drift = Array.from(OCTETS).flatMap((value) => {
 			const bytes = new Uint8Array([value])
 			const text = decodeWindows1252(bytes)
 			if (WINDOWS_1252_UNDEFINED.includes(value)) {
-				if (text !== undefined) drift.push(`slot ${value} admitted`)
-				continue
+				return text !== undefined ? [`slot ${value} admitted`] : []
 			}
-			if (text === undefined) drift.push(`byte ${value} refused`)
-			else if (encodeWindows1252(text)?.[0] !== value) drift.push(`byte ${value} re-encoded`)
-		}
+			if (text === undefined) return [`byte ${value} refused`]
+			return encodeWindows1252(text)?.[0] !== value ? [`byte ${value} re-encoded`] : []
+		})
 
 		expect(drift).toEqual([])
 	})
@@ -462,30 +466,30 @@ describe('the canonical-form law — re-encoding admitted bytes returns the byte
 	// back from the text alone. A width rule one of them stops enforcing shows up as a disagreement
 	// over the exhaustive two-byte space rather than as a spot vector.
 	it('re-encodes every admitted byte pair through the UTF-8 and UTF-16LE faces', () => {
-		const drift: string[] = []
-		let admittedUTF8 = 0
-		let admittedUTF16 = 0
-		for (let first = 0; first < 256; first += 1) {
-			for (let second = 0; second < 256; second += 1) {
+		const results = Array.from(OCTETS).flatMap((first) =>
+			Array.from(OCTETS, (second) => {
+				const differences: string[] = []
 				const bytes = new Uint8Array([first, second])
 				const utf8 = decodeUTF8(bytes)
 				const utf16 = decodeUTF16LE(bytes)
 				if (utf8 !== undefined) {
-					admittedUTF8 += 1
 					const back = encodeUTF8(utf8)
 					if (back === undefined || back[0] !== first || back[1] !== second) {
-						drift.push(`UTF-8 ${first},${second}`)
+						differences.push(`UTF-8 ${first},${second}`)
 					}
 				}
 				if (utf16 !== undefined) {
-					admittedUTF16 += 1
 					const back = encodeUTF16LE(utf16)
 					if (back === undefined || back[0] !== first || back[1] !== second) {
-						drift.push(`UTF-16LE ${first},${second}`)
+						differences.push(`UTF-16LE ${first},${second}`)
 					}
 				}
-			}
-		}
+				return { differences, utf8: utf8 !== undefined, utf16: utf16 !== undefined }
+			}),
+		)
+		const admittedUTF8 = results.filter((result) => result.utf8).length
+		const admittedUTF16 = results.filter((result) => result.utf16).length
+		const drift = results.flatMap((result) => result.differences)
 
 		expect(admittedUTF8).toBeGreaterThan(0)
 		expect(admittedUTF16).toBeGreaterThan(0)
@@ -495,47 +499,47 @@ describe('the canonical-form law — re-encoding admitted bytes returns the byte
 	})
 
 	it('re-encodes every admitted byte pair through the Latin-1 and Windows-1252 faces', () => {
-		const drift: string[] = []
-		for (let first = 0; first < 256; first += 1) {
-			for (let second = 0; second < 256; second += 1) {
+		const drift = Array.from(OCTETS).flatMap((first) =>
+			Array.from(OCTETS).flatMap((second) => {
+				const differences: string[] = []
 				const bytes = new Uint8Array([first, second])
 				const latin1 = encodeLatin1(decodeLatin1(bytes))
 				if (latin1 === undefined || latin1[0] !== first || latin1[1] !== second) {
-					drift.push(`Latin-1 ${first},${second}`)
+					differences.push(`Latin-1 ${first},${second}`)
 				}
 				const text = decodeWindows1252(bytes)
-				if (text === undefined) continue
+				if (text === undefined) return differences
 				const back = encodeWindows1252(text)
 				if (back === undefined || back[0] !== first || back[1] !== second) {
-					drift.push(`Windows-1252 ${first},${second}`)
+					differences.push(`Windows-1252 ${first},${second}`)
 				}
-			}
-		}
+				return differences
+			}),
+		)
 
 		expect(drift).toEqual([])
 	})
 
 	it('reads the Windows-1252 defined mapping as a bijection', () => {
-		const owner = new Map<string, number>()
-		const collisions: string[] = []
-		for (const value of OCTETS) {
+		const entries = Array.from(OCTETS).flatMap((value) => {
 			const text = decodeWindows1252(new Uint8Array([value]))
-			if (text === undefined) continue
-			const previous = owner.get(text)
-			if (previous !== undefined) collisions.push(`${previous},${value}`)
-			owner.set(text, value)
-		}
+			return text === undefined ? [] : [{ text, value }]
+		})
+		const owner = new Map(entries.map(({ text, value }) => [text, value]))
+		const collisions = entries.flatMap(({ text, value }, index) => {
+			const previous = entries.slice(0, index).findLast((entry) => entry.text === text)
+			return previous === undefined ? [] : [`${previous.value},${value}`]
+		})
 
 		expect(collisions).toEqual([])
 		expect(owner.size).toBe(OCTETS.length - WINDOWS_1252_UNDEFINED.length)
 	})
 
 	it('reads the Latin-1 mapping as the identity bijection', () => {
-		const drift: string[] = []
-		for (const value of OCTETS) {
+		const drift = Array.from(OCTETS).flatMap((value) => {
 			const text = decodeLatin1(new Uint8Array([value]))
-			if (text.length !== 1 || text.codePointAt(0) !== value) drift.push(`byte ${value}`)
-		}
+			return text.length !== 1 || text.codePointAt(0) !== value ? [`byte ${value}`] : []
+		})
 
 		expect(drift).toEqual([])
 		expect(new Set(LATIN1_OCTETS).size).toBe(OCTETS.length)
@@ -596,10 +600,9 @@ describe('the strict refusals — each charset door, pinned', () => {
 	}
 
 	it('refuses every C1 control on the Windows-1252 text side', () => {
-		const admitted: number[] = []
-		for (let point = 0x80; point <= 0x9f; point += 1) {
-			if (encodeWindows1252(String.fromCharCode(point)) !== undefined) admitted.push(point)
-		}
+		const admitted = Array.from({ length: 0x20 }, (_, index) => index + 0x80).filter(
+			(point) => encodeWindows1252(String.fromCharCode(point)) !== undefined,
+		)
 
 		expect(admitted).toEqual([])
 	})
@@ -607,16 +610,18 @@ describe('the strict refusals — each charset door, pinned', () => {
 
 describe('the platform oracles — the same codings, read by a mechanism that can disagree', () => {
 	it('decodes every byte pair the way the strict UTF-8 and UTF-16LE decoders do', () => {
-		const drift: string[] = []
-		for (let first = 0; first < 256; first += 1) {
-			for (let second = 0; second < 256; second += 1) {
+		const drift = Array.from(OCTETS).flatMap((first) =>
+			Array.from(OCTETS).flatMap((second) => {
+				const differences: string[] = []
 				const bytes = new Uint8Array([first, second])
-				if (decodeUTF8(bytes) !== decodeUTF8Oracle(bytes)) drift.push(`UTF-8 ${first},${second}`)
+				if (decodeUTF8(bytes) !== decodeUTF8Oracle(bytes))
+					differences.push(`UTF-8 ${first},${second}`)
 				if (decodeUTF16LE(bytes) !== decodeUTF16LEOracle(bytes)) {
-					drift.push(`UTF-16LE ${first},${second}`)
+					differences.push(`UTF-16LE ${first},${second}`)
 				}
-			}
-		}
+				return differences
+			}),
+		)
 
 		expect(drift).toEqual([])
 	})
@@ -627,16 +632,18 @@ describe('the platform oracles — the same codings, read by a mechanism that ca
 	// started walking, which is where a width that consumes one byte too many or a continuation
 	// check that runs off the end shows up.
 	it('decodes every embedded byte pair the way the strict UTF-8 decoder does', () => {
-		const drift: string[] = []
-		let admitted = 0
-		for (let first = 0; first < 256; first += 1) {
-			for (let second = 0; second < 256; second += 1) {
+		const results = Array.from(OCTETS).flatMap((first) =>
+			Array.from(OCTETS, (second) => {
 				const bytes = new Uint8Array([0x41, first, second, 0x41])
 				const ours = decodeUTF8(bytes)
-				if (ours !== undefined) admitted += 1
-				if (ours !== decodeUTF8Oracle(bytes)) drift.push(`${first},${second}`)
-			}
-		}
+				return {
+					admitted: ours !== undefined,
+					differences: ours !== decodeUTF8Oracle(bytes) ? [`${first},${second}`] : [],
+				}
+			}),
+		)
+		const admitted = results.filter((result) => result.admitted).length
+		const drift = results.flatMap((result) => result.differences)
 
 		expect(admitted).toBeGreaterThan(0)
 		expect(admitted).toBeLessThan(65536)
@@ -647,27 +654,29 @@ describe('the platform oracles — the same codings, read by a mechanism that ca
 	// at all: the overlong spellings of a four-byte code point, the encoded surrogates a canonical
 	// U+D7FF sits one lead byte away from, and every continuation byte that stops being one.
 	it('decodes every one-byte mutation of every boundary encoding the way the oracle does', () => {
-		const drift: string[] = []
-		let admitted = 0
-		let compared = 0
-		for (const row of UTF8_BOUNDARIES) {
+		const results = UTF8_BOUNDARIES.flatMap((row) => {
 			const canonical = requireValue(
 				encodeUTF8(String.fromCodePoint(row.point)),
 				`U+${row.point.toString(16)}`,
 			)
-			for (let position = 0; position < canonical.length; position += 1) {
-				for (let value = 0; value < 256; value += 1) {
+			return Array.from(canonical.keys()).flatMap((position) =>
+				Array.from(OCTETS, (value) => {
 					const bytes = Uint8Array.from(canonical)
 					bytes[position] = value
-					compared += 1
 					const ours = decodeUTF8(bytes)
-					if (ours !== undefined) admitted += 1
-					if (ours !== decodeUTF8Oracle(bytes)) {
-						drift.push(`U+${row.point.toString(16)} at ${position} as ${value}`)
+					return {
+						admitted: ours !== undefined,
+						differences:
+							ours !== decodeUTF8Oracle(bytes)
+								? [`U+${row.point.toString(16)} at ${position} as ${value}`]
+								: [],
 					}
-				}
-			}
-		}
+				}),
+			)
+		})
+		const admitted = results.filter((result) => result.admitted).length
+		const compared = results.length
+		const drift = results.flatMap((result) => result.differences)
 
 		expect(compared).toBe(UTF8_BOUNDARIES.reduce((total, row) => total + row.width, 0) * 256)
 		expect(admitted).toBeGreaterThan(0)
@@ -681,12 +690,11 @@ describe('the platform oracles — the same codings, read by a mechanism that ca
 	// transcription of the published table, carrying the characters rather than their code points and
 	// omitting the undefined slots, the way RFC_STANDARD is the second mechanism for the alphabets.
 	it('reads the written-out high table entry by entry against the published index', () => {
-		const drift: string[] = []
-		for (const [key, point] of Object.entries(WINDOWS_1252_HIGH)) {
+		const drift = Object.entries(WINDOWS_1252_HIGH).flatMap(([key, point]) => {
 			const character = WINDOWS_1252_INDEX[key]
-			if (character === undefined) drift.push(`${key} absent from the index`)
-			else if (character.codePointAt(0) !== point) drift.push(`${key} names another character`)
-		}
+			if (character === undefined) return [`${key} absent from the index`]
+			return character.codePointAt(0) !== point ? [`${key} names another character`] : []
+		})
 		const extra = Object.keys(WINDOWS_1252_INDEX).filter(
 			(key) => !Object.hasOwn(WINDOWS_1252_HIGH, key),
 		)
@@ -700,39 +708,41 @@ describe('the platform oracles — the same codings, read by a mechanism that ca
 	})
 
 	it('decodes every single byte and every pinned refusal the way the oracles do', () => {
-		const drift: string[] = []
-		for (const value of OCTETS) {
-			const bytes = new Uint8Array([value])
-			if (decodeUTF8(bytes) !== decodeUTF8Oracle(bytes)) drift.push(`byte ${value}`)
-		}
-		for (const row of [...UTF8_REFUSALS, ...UTF16_REFUSALS]) {
-			const bytes = new Uint8Array(row.bytes)
-			if (decodeUTF8(bytes) !== decodeUTF8Oracle(bytes)) drift.push(`UTF-8 ${row.reason}`)
-			if (decodeUTF16LE(bytes) !== decodeUTF16LEOracle(bytes)) drift.push(`UTF-16LE ${row.reason}`)
-		}
+		const drift = [
+			...Array.from(OCTETS).flatMap((value) => {
+				const bytes = new Uint8Array([value])
+				return decodeUTF8(bytes) !== decodeUTF8Oracle(bytes) ? [`byte ${value}`] : []
+			}),
+			...[...UTF8_REFUSALS, ...UTF16_REFUSALS].flatMap((row) => {
+				const differences: string[] = []
+				const bytes = new Uint8Array(row.bytes)
+				if (decodeUTF8(bytes) !== decodeUTF8Oracle(bytes)) differences.push(`UTF-8 ${row.reason}`)
+				if (decodeUTF16LE(bytes) !== decodeUTF16LEOracle(bytes))
+					differences.push(`UTF-16LE ${row.reason}`)
+				return differences
+			}),
+		]
 
 		expect(drift).toEqual([])
 	})
 
 	it('encodes every well-formed text the way the platform encoder does', () => {
-		const drift: string[] = []
-		for (const text of TEXTS) {
+		const drift = TEXTS.flatMap((text) => {
 			const ours = requireValue(encodeUTF8(text), JSON.stringify(text))
 			const theirs = encodeUTF8Oracle(text)
-			if (ours.length !== theirs.length) drift.push(`length ${JSON.stringify(text)}`)
-			else if (theirs.some((byte, index) => ours[index] !== byte)) drift.push(JSON.stringify(text))
-		}
+			if (ours.length !== theirs.length) return [`length ${JSON.stringify(text)}`]
+			return theirs.some((byte, index) => ours[index] !== byte) ? [JSON.stringify(text)] : []
+		})
 
 		expect(TEXTS.length).toBeGreaterThan(0)
 		expect(drift).toEqual([])
 	})
 
 	it('reads its own UTF-16LE encodings back through the platform decoder', () => {
-		const drift: string[] = []
-		for (const text of TEXTS) {
+		const drift = TEXTS.flatMap((text) => {
 			const bytes = requireValue(encodeUTF16LE(text), JSON.stringify(text))
-			if (decodeUTF16LEOracle(bytes) !== text) drift.push(JSON.stringify(text))
-		}
+			return decodeUTF16LEOracle(bytes) !== text ? [JSON.stringify(text)] : []
+		})
 
 		expect(drift).toEqual([])
 	})
@@ -741,39 +751,39 @@ describe('the platform oracles — the same codings, read by a mechanism that ca
 	// an entry for every byte, so it cannot judge the slots this coding refuses; those are pinned
 	// directly in the strict-refusal rows instead.
 	it('decodes every defined Windows-1252 byte the way the WHATWG index does', () => {
-		const drift: string[] = []
-		let compared = 0
-		for (const value of OCTETS) {
-			if (WINDOWS_1252_UNDEFINED.includes(value)) continue
-			compared += 1
-			if (decodeWindows1252(new Uint8Array([value])) !== WINDOWS_1252_OCTETS[value]) {
-				drift.push(`byte ${value}`)
-			}
-		}
+		const values = Array.from(OCTETS).filter((value) => !WINDOWS_1252_UNDEFINED.includes(value))
+		const compared = values.length
+		const drift = values
+			.filter((value) => decodeWindows1252(new Uint8Array([value])) !== WINDOWS_1252_OCTETS[value])
+			.map((value) => `byte ${value}`)
 
 		expect(compared).toBe(OCTETS.length - WINDOWS_1252_UNDEFINED.length)
 		expect(drift).toEqual([])
 	})
 
 	it('encodes every defined Windows-1252 character back to the byte the index names', () => {
-		const drift: string[] = []
-		for (const value of OCTETS) {
-			if (WINDOWS_1252_UNDEFINED.includes(value)) continue
+		const drift = Array.from(OCTETS).flatMap((value) => {
+			if (WINDOWS_1252_UNDEFINED.includes(value)) return []
 			const character = requireValue(WINDOWS_1252_OCTETS[value], `byte ${value}`)
-			if (encodeWindows1252(character)?.[0] !== value) drift.push(`byte ${value}`)
-		}
+			return encodeWindows1252(character)?.[0] !== value ? [`byte ${value}`] : []
+		})
 
 		expect(drift).toEqual([])
 	})
 
 	it('decodes every byte the way ISO-8859-1 defines it, which the latin1 label does not', () => {
-		const drift: string[] = []
-		const labelDisagrees: number[] = []
-		for (const value of OCTETS) {
+		const results = Array.from(OCTETS, (value) => {
 			const character = requireValue(LATIN1_OCTETS[value], `byte ${value}`)
-			if (decodeLatin1(new Uint8Array([value])) !== character) drift.push(`byte ${value}`)
-			if (WINDOWS_1252_OCTETS[value] !== character) labelDisagrees.push(value)
-		}
+			return {
+				value,
+				differences: decodeLatin1(new Uint8Array([value])) !== character ? [`byte ${value}`] : [],
+				disagrees: WINDOWS_1252_OCTETS[value] !== character,
+			}
+		})
+		const drift = results.flatMap((result) => result.differences)
+		const labelDisagrees = results
+			.filter((result) => result.disagrees)
+			.map((result) => result.value)
 
 		expect(drift).toEqual([])
 		// The WHATWG `latin1` label is windows-1252, so the two codings part company across the high

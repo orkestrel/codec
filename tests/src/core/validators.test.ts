@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { attempt } from '@orkestrel/contract'
 import { createHostileValues } from '@orkestrel/test'
 import {
 	decodeBase64,
@@ -52,19 +53,20 @@ describe('the iff law — isHex names exactly what decodeHex accepts', () => {
 
 describe('the iff law — each charset guard names exactly what its partial direction accepts', () => {
 	it('binds isUTF8, isWindows1252, and isUTF16LE to their decoders over every byte pair', () => {
-		const drift: string[] = []
-		for (let first = 0; first < 256; first += 1) {
-			for (let second = 0; second < 256; second += 1) {
+		const drift = Array.from(OCTETS).flatMap((first) =>
+			Array.from(OCTETS).flatMap((second) => {
+				const differences: string[] = []
 				const bytes = new Uint8Array([first, second])
-				if (isUTF8(bytes) !== (decodeUTF8(bytes) !== undefined)) drift.push(`UTF-8 ${first}`)
+				if (isUTF8(bytes) !== (decodeUTF8(bytes) !== undefined)) differences.push(`UTF-8 ${first}`)
 				if (isUTF16LE(bytes) !== (decodeUTF16LE(bytes) !== undefined)) {
-					drift.push(`UTF-16LE ${first},${second}`)
+					differences.push(`UTF-16LE ${first},${second}`)
 				}
 				if (isWindows1252(bytes) !== (decodeWindows1252(bytes) !== undefined)) {
-					drift.push(`Windows-1252 ${first},${second}`)
+					differences.push(`Windows-1252 ${first},${second}`)
 				}
-			}
-		}
+				return differences
+			}),
+		)
 
 		expect(drift).toEqual([])
 	})
@@ -111,18 +113,20 @@ describe('guard totality', () => {
 
 	it('answers false for every hostile value without throwing', () => {
 		for (const [index, value] of createHostileValues().entries()) {
-			const answers: Record<string, boolean | undefined> = {}
-
+			const answers = attempt(() => ({
+				standard: isBase64(value),
+				url: isBase64URL(value),
+				hex: isHex(value),
+				utf8: isUTF8(value),
+				latin1: isLatin1(value),
+				windows: isWindows1252(value),
+				utf16: isUTF16LE(value),
+			}))
 			expect(() => {
-				answers.standard = isBase64(value)
-				answers.url = isBase64URL(value)
-				answers.hex = isHex(value)
-				answers.utf8 = isUTF8(value)
-				answers.latin1 = isLatin1(value)
-				answers.windows = isWindows1252(value)
-				answers.utf16 = isUTF16LE(value)
+				if (!answers.success) throw answers.error
 			}, `hostile value ${index}`).not.toThrow()
-			for (const [face, answer] of Object.entries(answers)) {
+			if (!answers.success) throw answers.error
+			for (const [face, answer] of Object.entries(answers.value)) {
 				expect(answer, `hostile value ${index} on ${face}`).toBe(false)
 			}
 		}

@@ -38,17 +38,19 @@ import {
  * ```
  */
 export function encodeBase64(bytes: Uint8Array): string {
-	let text = ''
-	for (let index = 0; index < bytes.length; index += 3) {
+	const groups = Array.from({ length: Math.ceil(bytes.length / 3) }, (_, group) => {
+		const index = group * 3
 		const second = bytes[index + 1]
 		const third = bytes[index + 2]
 		const value = ((bytes[index] ?? 0) << 16) | ((second ?? 0) << 8) | (third ?? 0)
-		text += BASE64_ALPHABET.charAt((value >> 18) & 0x3f)
-		text += BASE64_ALPHABET.charAt((value >> 12) & 0x3f)
-		text += second === undefined ? '=' : BASE64_ALPHABET.charAt((value >> 6) & 0x3f)
-		text += third === undefined ? '=' : BASE64_ALPHABET.charAt(value & 0x3f)
-	}
-	return text
+		return [
+			BASE64_ALPHABET.charAt((value >> 18) & 0x3f),
+			BASE64_ALPHABET.charAt((value >> 12) & 0x3f),
+			second === undefined ? '=' : BASE64_ALPHABET.charAt((value >> 6) & 0x3f),
+			third === undefined ? '=' : BASE64_ALPHABET.charAt(value & 0x3f),
+		].join('')
+	})
+	return groups.join('')
 }
 
 /**
@@ -75,8 +77,9 @@ export function decodeBase64(text: string): Uint8Array<ArrayBuffer> | undefined 
 	if (text.length % 4 !== 0) return undefined
 	const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0
 	const bytes = new Uint8Array((text.length / 4) * 3 - padding)
-	let cursor = 0
-	for (let index = 0; index < text.length; index += 4) {
+	for (const group of Array.from({ length: text.length / 4 }).keys()) {
+		const index = group * 4
+		const cursor = group * 3
 		const tail = text.length - index === 4 ? padding : 0
 		const first = BASE64_LOOKUP[text.charAt(index)]
 		const second = BASE64_LOOKUP[text.charAt(index + 1)]
@@ -90,7 +93,6 @@ export function decodeBase64(text: string): Uint8Array<ArrayBuffer> | undefined 
 		bytes[cursor] = (value >> 16) & 0xff
 		if (tail < 2) bytes[cursor + 1] = (value >> 8) & 0xff
 		if (tail === 0) bytes[cursor + 2] = value & 0xff
-		cursor += 3 - tail
 	}
 	return bytes
 }
@@ -161,12 +163,10 @@ export function decodeBase64URL(text: string): Uint8Array<ArrayBuffer> | undefin
  * ```
  */
 export function encodeHex(bytes: Uint8Array): string {
-	let text = ''
-	for (const byte of bytes) {
-		text += HEX_ALPHABET.charAt((byte >> 4) & 0x0f)
-		text += HEX_ALPHABET.charAt(byte & 0x0f)
-	}
-	return text
+	return Iterator.from(bytes)
+		.map((byte) => HEX_ALPHABET.charAt((byte >> 4) & 0x0f) + HEX_ALPHABET.charAt(byte & 0x0f))
+		.toArray()
+		.join('')
 }
 
 /**
@@ -191,7 +191,8 @@ export function encodeHex(bytes: Uint8Array): string {
 export function decodeHex(text: string): Uint8Array<ArrayBuffer> | undefined {
 	if (text.length % 2 !== 0) return undefined
 	const bytes = new Uint8Array(text.length / 2)
-	for (let index = 0; index < text.length; index += 2) {
+	for (const position of bytes.keys()) {
+		const index = position * 2
 		const high = HEX_LOOKUP[text.charAt(index)]
 		const low = HEX_LOOKUP[text.charAt(index + 1)]
 		if (high === undefined || low === undefined) return undefined
@@ -239,7 +240,8 @@ export function decodeHex(text: string): Uint8Array<ArrayBuffer> | undefined {
 export function measureBase64(text: string): number | undefined {
 	if (text.length % 4 !== 0) return undefined
 	const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0
-	for (let index = 0; index < text.length; index += 4) {
+	for (const group of Array.from({ length: text.length / 4 }).keys()) {
+		const index = group * 4
 		const tail = text.length - index === 4 ? padding : 0
 		const first = BASE64_LOOKUP[text.charAt(index)]
 		const second = BASE64_LOOKUP[text.charAt(index + 1)]
@@ -303,7 +305,8 @@ export function measureBase64URL(text: string): number | undefined {
  */
 export function measureHex(text: string): number | undefined {
 	if (text.length % 2 !== 0) return undefined
-	for (let index = 0; index < text.length; index += 2) {
+	for (const position of Array.from({ length: text.length / 2 }).keys()) {
+		const index = position * 2
 		const high = HEX_LOOKUP[text.charAt(index)]
 		const low = HEX_LOOKUP[text.charAt(index + 1)]
 		if (high === undefined || low === undefined) return undefined
@@ -339,21 +342,10 @@ export function measureHex(text: string): number | undefined {
  */
 export function measureUTF8(text: string): number | undefined {
 	if (!text.isWellFormed()) return undefined
-	let total = 0
-	for (let index = 0; index < text.length; index += 1) {
-		const unit = text.charCodeAt(index)
-		if (unit < 0x80) {
-			total += 1
-		} else if (unit < 0x800) {
-			total += 2
-		} else if (unit >= 0xd800 && unit <= 0xdbff) {
-			total += 4
-			index += 1
-		} else {
-			total += 3
-		}
-	}
-	return total
+	return Iterator.from(text).reduce((total, character) => {
+		const point = character.codePointAt(0) ?? 0
+		return total + (point < 0x80 ? 1 : point < 0x800 ? 2 : point < 0x10000 ? 3 : 4)
+	}, 0)
 }
 
 // === The UTF-8 coding
@@ -394,28 +386,23 @@ export function measureUTF8(text: string): number | undefined {
  */
 export function encodeUTF8(text: string): Uint8Array<ArrayBuffer> | undefined {
 	if (!text.isWellFormed()) return undefined
-	const bytes: number[] = []
-	for (let index = 0; index < text.length; index += 1) {
-		let point = text.charCodeAt(index)
-		if (point >= 0xd800 && point <= 0xdbff) {
-			point = (point - 0xd800) * 0x400 + (text.charCodeAt(index + 1) - 0xdc00) + 0x10000
-			index += 1
-		}
+	const bytes = Array.from(text).flatMap((character) => {
+		const point = character.codePointAt(0) ?? 0
 		if (point < 0x80) {
-			bytes.push(point)
+			return [point]
 		} else if (point < 0x800) {
-			bytes.push(0xc0 | (point >> 6), 0x80 | (point & 0x3f))
+			return [0xc0 | (point >> 6), 0x80 | (point & 0x3f)]
 		} else if (point < 0x10000) {
-			bytes.push(0xe0 | (point >> 12), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f))
+			return [0xe0 | (point >> 12), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f)]
 		} else {
-			bytes.push(
+			return [
 				0xf0 | (point >> 18),
 				0x80 | ((point >> 12) & 0x3f),
 				0x80 | ((point >> 6) & 0x3f),
 				0x80 | (point & 0x3f),
-			)
+			]
 		}
-	}
+	})
 	return Uint8Array.from(bytes)
 }
 
@@ -440,9 +427,9 @@ export function encodeUTF8(text: string): Uint8Array<ArrayBuffer> | undefined {
  * ```
  */
 export function decodeUTF8(bytes: Uint8Array): string | undefined {
-	let text = ''
-	let index = 0
-	while (index < bytes.length) {
+	const text: string[] = []
+	const positions = Array.from({ length: bytes.length }).keys()
+	for (const index of positions) {
 		const lead = bytes[index] ?? 0
 		const width =
 			lead < 0x80
@@ -455,20 +442,22 @@ export function decodeUTF8(bytes: Uint8Array): string | undefined {
 							? 4
 							: 0
 		if (width === 0 || index + width > bytes.length) return undefined
-		let point = width === 1 ? lead : lead & (0xff >> (width + 1))
-		for (let offset = 1; offset < width; offset += 1) {
-			const continuation = bytes[index + offset] ?? 0
-			if ((continuation & 0xc0) !== 0x80) return undefined
-			point = (point << 6) | (continuation & 0x3f)
-		}
+		const point = positions.take(width - 1).reduce<number | undefined>(
+			(value, position) => {
+				if (value === undefined) return undefined
+				const continuation = bytes[position] ?? 0
+				return (continuation & 0xc0) === 0x80 ? (value << 6) | (continuation & 0x3f) : undefined
+			},
+			width === 1 ? lead : lead & (0xff >> (width + 1)),
+		)
+		if (point === undefined) return undefined
 		if (width === 3 && point < 0x800) return undefined
 		if (width === 4 && point < 0x10000) return undefined
 		if (point >= 0xd800 && point <= 0xdfff) return undefined
 		if (point > 0x10ffff) return undefined
-		text += String.fromCodePoint(point)
-		index += width
+		text.push(String.fromCodePoint(point))
 	}
-	return text
+	return text.join('')
 }
 
 // === The ISO-8859-1 coding
@@ -499,7 +488,7 @@ export function decodeUTF8(bytes: Uint8Array): string | undefined {
  */
 export function encodeLatin1(text: string): Uint8Array<ArrayBuffer> | undefined {
 	const bytes = new Uint8Array(text.length)
-	for (let index = 0; index < text.length; index += 1) {
+	for (const index of bytes.keys()) {
 		const unit = text.charCodeAt(index)
 		if (unit > 0xff) return undefined
 		bytes[index] = unit
@@ -527,9 +516,10 @@ export function encodeLatin1(text: string): Uint8Array<ArrayBuffer> | undefined 
  * ```
  */
 export function decodeLatin1(bytes: Uint8Array): string {
-	let text = ''
-	for (const byte of bytes) text += String.fromCharCode(byte)
-	return text
+	return Iterator.from(bytes)
+		.map((byte) => String.fromCharCode(byte))
+		.toArray()
+		.join('')
 }
 
 // === The Windows-1252 coding
@@ -561,7 +551,7 @@ export function decodeLatin1(bytes: Uint8Array): string {
 export function encodeWindows1252(text: string): Uint8Array<ArrayBuffer> | undefined {
 	const entries = Object.entries(WINDOWS_1252_HIGH)
 	const bytes = new Uint8Array(text.length)
-	for (let index = 0; index < text.length; index += 1) {
+	for (const index of bytes.keys()) {
 		const unit = text.charCodeAt(index)
 		if (unit < 0x80 || (unit >= 0xa0 && unit <= 0xff)) {
 			bytes[index] = unit
@@ -594,17 +584,17 @@ export function encodeWindows1252(text: string): Uint8Array<ArrayBuffer> | undef
  * ```
  */
 export function decodeWindows1252(bytes: Uint8Array): string | undefined {
-	let text = ''
+	const text: string[] = []
 	for (const byte of bytes) {
 		if (byte < 0x80 || byte >= 0xa0) {
-			text += String.fromCharCode(byte)
+			text.push(String.fromCharCode(byte))
 			continue
 		}
 		const point = WINDOWS_1252_HIGH[byte]
 		if (point === undefined) return undefined
-		text += String.fromCharCode(point)
+		text.push(String.fromCharCode(point))
 	}
-	return text
+	return text.join('')
 }
 
 // === The UTF-16LE coding
@@ -639,7 +629,7 @@ export function decodeWindows1252(bytes: Uint8Array): string | undefined {
 export function encodeUTF16LE(text: string): Uint8Array<ArrayBuffer> | undefined {
 	if (!text.isWellFormed()) return undefined
 	const bytes = new Uint8Array(text.length * 2)
-	for (let index = 0; index < text.length; index += 1) {
+	for (const index of Array.from({ length: text.length }).keys()) {
 		const unit = text.charCodeAt(index)
 		bytes[index * 2] = unit & 0xff
 		bytes[index * 2 + 1] = (unit >> 8) & 0xff
@@ -670,21 +660,20 @@ export function encodeUTF16LE(text: string): Uint8Array<ArrayBuffer> | undefined
  */
 export function decodeUTF16LE(bytes: Uint8Array): string | undefined {
 	if (bytes.length % 2 !== 0) return undefined
-	let text = ''
-	let index = 0
-	while (index < bytes.length) {
+	const text: string[] = []
+	const positions = Array.from({ length: bytes.length / 2 }, (_, index) => index * 2).values()
+	for (const index of positions) {
 		const unit = ((bytes[index + 1] ?? 0) << 8) | (bytes[index] ?? 0)
 		if (unit >= 0xdc00 && unit <= 0xdfff) return undefined
 		if (unit >= 0xd800 && unit <= 0xdbff) {
 			if (index + 4 > bytes.length) return undefined
 			const trail = ((bytes[index + 3] ?? 0) << 8) | (bytes[index + 2] ?? 0)
 			if (trail < 0xdc00 || trail > 0xdfff) return undefined
-			text += String.fromCharCode(unit, trail)
-			index += 4
+			text.push(String.fromCharCode(unit, trail))
+			positions.next()
 			continue
 		}
-		text += String.fromCharCode(unit)
-		index += 2
+		text.push(String.fromCharCode(unit))
 	}
-	return text
+	return text.join('')
 }

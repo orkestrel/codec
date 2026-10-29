@@ -1,4 +1,5 @@
 import {
+	buildCodecTexts,
 	decodeUTF16LEOracle,
 	decodeUTF8Oracle,
 	encodeUTF8Oracle,
@@ -12,6 +13,14 @@ import {
 import { describe, expect, it } from 'vitest'
 
 describe('setup tables', () => {
+	it('builds distinct prefixes in digit order without splitting astral characters', () => {
+		expect(buildCodecTexts(['a', 'b'], 2)).toEqual(['', 'a', 'aa', 'b', 'ba', 'ab', 'bb'])
+		expect(buildCodecTexts(['\u{10000}', 'a'], 1)).toEqual(['', '\u{10000}', 'a'])
+		expect(buildCodecTexts(['a', 'a'], 2)).toEqual(['', 'a', 'aa'])
+		expect(buildCodecTexts(['a'], 0)).toEqual([''])
+		expect(buildCodecTexts([], 2)).toEqual([''])
+	})
+
 	it('carries distinct RFC alphabets with their face-specific suffixes', () => {
 		expect(RFC_STANDARD).toHaveLength(64)
 		expect(new Set(RFC_STANDARD).size).toBe(64)
