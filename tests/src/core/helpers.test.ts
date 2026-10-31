@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { requireValue } from '@orkestrel/test'
 import {
+	BOM,
 	decodeBase64,
 	decodeBase64URL,
 	decodeHex,
@@ -416,6 +417,17 @@ describe('the round-trip law — the charset codings', () => {
 				text,
 			)
 		}
+	})
+
+	it('carries the BOM as data on the UTF-8 and UTF-16LE faces, leading position included', () => {
+		const text = `${BOM}id`
+
+		expect(BOM).toBe(String.fromCodePoint(0xfeff))
+		expect(encodeUTF8(BOM)).toStrictEqual(new Uint8Array([0xef, 0xbb, 0xbf]))
+		expect(encodeUTF16LE(BOM)).toStrictEqual(new Uint8Array([0xff, 0xfe]))
+		expect(decodeUTF8(new Uint8Array([0xef, 0xbb, 0xbf, 0x69, 0x64]))).toBe(text)
+		expect(decodeUTF16LE(new Uint8Array([0xff, 0xfe, 0x69, 0x00, 0x64, 0x00]))).toBe(text)
+		expect(measureUTF8(text)).toBe(5)
 	})
 
 	it('round-trips the whole octet space through the Latin-1 face in one buffer', () => {

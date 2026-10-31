@@ -10,9 +10,10 @@ A dual-axis index into this repository's guides — by concept, and by directory
 
 ## By directory
 
-| Directory  | Guide                  |
-| ---------- | ---------------------- |
-| `src/core` | [`codec.md`](codec.md) |
+| Directory        | Guide                  |
+| ---------------- | ---------------------- |
+| `src/core`       | [`codec.md`](codec.md) |
+| `src/core/marks` | [`codec.md`](codec.md) |
 
 ## Dependency reference
 

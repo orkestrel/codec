@@ -5,7 +5,7 @@
 > Windows-1252, and UTF-16LE charsets, beside a `measure*` that answers a coding's byte-side size
 > question without producing those bytes.
 
-Import the face you need from `@orkestrel/codec` and call it: every export is a plain function over
+Import the face you need from `@orkestrel/codec` and call it: every coding is a plain function over
 `string` and `Uint8Array`, with no options bag, no class, and no error type. Runtime type tests
 come from `@orkestrel/contract`. A decoder reports refusal as `undefined` and a guard reports it as
 `false`, so there is nothing to catch and nothing to configure. Source: [`src/core`](src/core). Part of
@@ -28,7 +28,8 @@ the byte-side sizes beside them are its [Measures](guides/codec.md#measures) sec
 
 A charset's wire form is bytes rather than text, so its `encode*` takes a string and its `decode*`
 takes bytes. The laws are unchanged; only the direction each is written in inverts. Those faces
-are the guide's [Charsets](guides/codec.md#charsets) section.
+are the guide's [Charsets](guides/codec.md#charsets) section, and the `BOM` constant a consumer
+writes or strips around them is its [Marks](guides/codec.md#marks) section.
 
 **The round-trip law.** `decode*(encode*(value))` deep-equals `value`, for every input the coding
 admits, the empty one included.

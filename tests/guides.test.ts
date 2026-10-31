@@ -47,6 +47,7 @@ await new GuideCommand({
 	const { computeSymbolKey, createGuide, findMissingSymbols } = await import('@orkestrel/guide')
 	const { requireValue } = await import('@orkestrel/test')
 	const {
+		BOM,
 		decodeBase64,
 		decodeBase64URL,
 		decodeHex,
@@ -270,6 +271,7 @@ await new GuideCommand({
 			expect(decodeUTF8(new Uint8Array([104, 105]))).toBe('hi')
 			expect(encodeUTF8('\ud800')).toBeUndefined()
 			expect(decodeUTF8(new Uint8Array([0xc0, 0x80]))).toBeUndefined()
+			expect(encodeUTF8(BOM)).toStrictEqual(new Uint8Array([0xef, 0xbb, 0xbf]))
 			expect(decodeUTF8(new Uint8Array([0xef, 0xbb, 0xbf]))).toBe('\ufeff')
 
 			expect(encodeLatin1('é')).toStrictEqual(new Uint8Array([233]))
