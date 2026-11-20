@@ -339,10 +339,12 @@ export function measureHex(text: string): number | undefined {
  */
 export function measureUTF8(text: string): number | undefined {
 	if (!text.isWellFormed()) return undefined
-	return Iterator.from(text).reduce((total, character) => {
-		const point = character.codePointAt(0) ?? 0
-		return total + (point < 0x80 ? 1 : point < 0x800 ? 2 : point < 0x10000 ? 3 : 4)
-	}, 0)
+	let total = 0
+	for (let index = 0; index < text.length; index++) {
+		const unit = text.charCodeAt(index)
+		total += unit < 0x80 ? 1 : unit < 0x800 || (unit >= 0xd800 && unit <= 0xdfff) ? 2 : 3
+	}
+	return total
 }
 
 // === The UTF-8 coding
