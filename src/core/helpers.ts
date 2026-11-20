@@ -3,6 +3,7 @@ import {
 	BASE64_LOOKUP,
 	HEX_ALPHABET,
 	HEX_LOOKUP,
+	UTF8_DECODER,
 	WINDOWS_1252_HIGH,
 } from './constants.js'
 
@@ -357,11 +358,11 @@ export function measureUTF8(text: string): number | undefined {
 // returns those bytes.
 //
 // `encodeUTF8` refuses exactly the ill-formed strings, which `String.prototype.isWellFormed`
-// already names, and emits the RFC 3629 shortest form for everything else. `decodeUTF8` walks the
-// same grammar in reverse and refuses every non-shortest or out-of-range spelling: a lead byte the
-// grammar has no width for (0xC0, 0xC1, and 0xF5 through 0xFF), a continuation byte that is not
-// 0b10xxxxxx, a sequence the buffer truncates, an overlong three- or four-byte form, an encoded
-// surrogate, and a code point past U+10FFFF. A leading BOM is data here rather than a signal:
+// already names, and emits the RFC 3629 shortest form for everything else. `decodeUTF8` reads the
+// same grammar in reverse through the host's fatal decoder, UTF8_DECODER, and refuses every
+// non-shortest or out-of-range spelling: a lead byte the grammar has no width for (0xC0, 0xC1, and
+// 0xF5 through 0xFF), a continuation byte that is not 0b10xxxxxx, a sequence the buffer truncates,
+// an overlong three- or four-byte form, an encoded surrogate, and a code point past U+10FFFF. A leading BOM is data here rather than a signal:
 // U+FEFF encodes to EF BB BF and those bytes decode back to U+FEFF, because the round-trip law
 // admits no byte the decoder is allowed to discard.
 
@@ -413,9 +414,10 @@ export function encodeUTF8(text: string): Uint8Array<ArrayBuffer> | undefined {
  * kept as U+FEFF rather than stripped.
  *
  * @remarks
- * The round-trip law leaves the decoder no byte it may discard, which is what keeps that leading
- * BOM — this coding's one documented departure from the platform's own default decoder.
- * `undefined` is the only failure mode; nothing here throws.
+ * The host's fatal UTF-8 decoder reads the bytes, with `ignoreBOM` set: the round-trip law leaves
+ * the decoder no byte it may discard, which is what keeps that leading BOM. A view over a
+ * `SharedArrayBuffer` or a resizable `ArrayBuffer` is decoded from a copy, because a browser's
+ * decoder can refuse one. `undefined` is the only failure mode; nothing here throws.
  *
  * @param bytes - The bytes to decode.
  * @returns The decoded text, or `undefined` when `bytes` are not strict UTF-8.
@@ -427,37 +429,14 @@ export function encodeUTF8(text: string): Uint8Array<ArrayBuffer> | undefined {
  * ```
  */
 export function decodeUTF8(bytes: Uint8Array): string | undefined {
-	const text: string[] = []
-	const positions = Array.from({ length: bytes.length }).keys()
-	for (const index of positions) {
-		const lead = bytes[index] ?? 0
-		const width =
-			lead < 0x80
-				? 1
-				: lead >= 0xc2 && lead <= 0xdf
-					? 2
-					: lead >= 0xe0 && lead <= 0xef
-						? 3
-						: lead >= 0xf0 && lead <= 0xf4
-							? 4
-							: 0
-		if (width === 0 || index + width > bytes.length) return undefined
-		const point = positions.take(width - 1).reduce<number | undefined>(
-			(value, position) => {
-				if (value === undefined) return undefined
-				const continuation = bytes[position] ?? 0
-				return (continuation & 0xc0) === 0x80 ? (value << 6) | (continuation & 0x3f) : undefined
-			},
-			width === 1 ? lead : lead & (0xff >> (width + 1)),
-		)
-		if (point === undefined) return undefined
-		if (width === 3 && point < 0x800) return undefined
-		if (width === 4 && point < 0x10000) return undefined
-		if (point >= 0xd800 && point <= 0xdfff) return undefined
-		if (point > 0x10ffff) return undefined
-		text.push(String.fromCodePoint(point))
+	// Chromium 153 refuses a view over a shared or a resizable buffer (read 2026-11-20), so copy it.
+	const view =
+		bytes.buffer instanceof ArrayBuffer && !bytes.buffer.resizable ? bytes : bytes.slice()
+	try {
+		return UTF8_DECODER.decode(view)
+	} catch {
+		return undefined
 	}
-	return text.join('')
 }
 
 // === The ISO-8859-1 coding

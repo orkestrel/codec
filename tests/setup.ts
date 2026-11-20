@@ -1,4 +1,4 @@
-import { encodeBase64, encodeBase64URL, encodeHex } from '@src/core'
+import { BOM, encodeBase64, encodeBase64URL, encodeHex } from '@src/core'
 
 /** Builds the distinct prefixes of every fixed-width word in least-significant-digit order. */
 export function buildCodecTexts(characters: readonly string[], width: number): readonly string[] {
@@ -11,6 +11,24 @@ export function buildCodecTexts(characters: readonly string[], width: number): r
 		return parts.map((_part, position) => parts.slice(0, position + 1).join(''))
 	})
 	return [...new Set(['', ...words.flat()])]
+}
+
+/**
+ * Draws a xorshift32 stream from a seed, each draw an unsigned 32-bit integer.
+ *
+ * The stream is a pure function of the seed, so a population drawn from it is identical on every
+ * host and every run, which `Math.random` cannot promise.
+ */
+export function buildDraws(seed: number, count: number): readonly number[] {
+	const draws = new Uint32Array(count)
+	let state = seed
+	for (let index = 0; index < count; index++) {
+		const left = state ^ (state << 13)
+		const right = left ^ (left >>> 17)
+		state = (right ^ (right << 5)) >>> 0
+		draws[index] = state
+	}
+	return Array.from(draws)
 }
 
 /** Transcribes the RFC 4648 §4 alphabet from the specification. */
@@ -242,13 +260,7 @@ const MUTANT_ROUNDS = 8
 const MUTANT_SEED = 0x1252c0de
 
 // The draws per mutant are the mutation, the position, and the character, over every base.
-const MUTANT_DRAWS: number[] = []
-for (const index of Array.from({ length: MUTANT_PREFIX * 3 * MUTANT_ROUNDS * 3 }).keys()) {
-	const previous = MUTANT_DRAWS[index - 1] ?? MUTANT_SEED
-	const left = previous ^ (previous << 13)
-	const right = left ^ (left >>> 17)
-	MUTANT_DRAWS.push((right ^ (right << 5)) >>> 0)
-}
+const MUTANT_DRAWS = buildDraws(MUTANT_SEED, MUTANT_PREFIX * 3 * MUTANT_ROUNDS * 3)
 
 const MUTANT_BASES = Array.from({ length: MUTANT_PREFIX }, (_, index) => {
 	const bytes = OCTETS.slice(0, index + 1)
@@ -304,8 +316,10 @@ export const HEX_MEASURE_TEXTS: readonly string[] = [
 
 // ── The charset oracles ──────────────────────────────────────────────────────
 //
-// Each oracle is the platform's own coding, which knows nothing about this package's tables and can
-// therefore disagree with them. Every one of them was probed before the sweeps were written to it,
+// Each oracle is a mechanism that can disagree with the face it reads. Where a face walks its own
+// tables, the oracle is the platform's coding. Where a face delegates to the platform, as
+// `decodeUTF8` does, the oracle is the walk that face shipped before it delegated, which reads no
+// platform table. Every platform oracle was probed before the sweeps were written to it,
 // and each divergence the probe found is recorded on the oracle it belongs to. The suite restricts
 // an oracle to the population it agrees with and asserts the divergent class directly.
 //
@@ -319,29 +333,57 @@ export const HEX_MEASURE_TEXTS: readonly string[] = [
 //   one of those slots under the fatal flag. So WINDOWS_1252_OCTETS is the oracle over the whole
 //   byte range and WINDOWS_1252_UNDEFINED names the bytes the sweep must exclude and pin directly.
 // - A fatal `TextDecoder` STRIPS a leading BOM unless `ignoreBOM` is set: the probe read length 2
-//   for `EF BB BF 68 69` by default and length 3 with `ignoreBOM: true`. Both oracles here set it,
-//   because this package's round-trip law leaves its decoders no byte they may discard.
+//   for `EF BB BF 68 69` by default and length 3 with `ignoreBOM: true`. The UTF-16LE oracle and
+//   `decodeUTF8` set it, because this package's round-trip law leaves its decoders no byte they may
+//   discard.
 //
 // `TextEncoder` is the UTF-8 encode oracle over well-formed text alone: the probe read `EF BF BD`
 // for a lone surrogate, so it replaces where `encodeUTF8` refuses.
 
-const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 const UTF16LE_DECODER = new TextDecoder('utf-16le', { fatal: true, ignoreBOM: true })
 const WINDOWS_1252_DECODER = new TextDecoder('windows-1252')
 const UTF8_ENCODER = new TextEncoder()
 
 /**
- * Decodes bytes through the platform's strict UTF-8 decoder, reporting a refusal as `undefined`.
+ * Decodes strict UTF-8 by walking the RFC 3629 grammar code point by code point, the walk
+ * `decodeUTF8` shipped in codec 0.0.12, answering `undefined` for every refused sequence.
  *
- * The decoder keeps the leading BOM, so the only remaining difference from `decodeUTF8` is how a
- * refusal is reported: the platform throws where this package returns `undefined`.
+ * `decodeUTF8` delegates to the host's fatal decoder, so this walk is the second mechanism that can
+ * disagree with it: it reads no platform table, keeps a leading BOM because it discards no byte,
+ * and returns `undefined` where the host throws.
  */
 export function decodeUTF8Oracle(bytes: Uint8Array): string | undefined {
-	try {
-		return UTF8_DECODER.decode(bytes)
-	} catch {
-		return undefined
+	const text: string[] = []
+	const positions = Array.from({ length: bytes.length }).keys()
+	for (const index of positions) {
+		const lead = bytes[index] ?? 0
+		const width =
+			lead < 0x80
+				? 1
+				: lead >= 0xc2 && lead <= 0xdf
+					? 2
+					: lead >= 0xe0 && lead <= 0xef
+						? 3
+						: lead >= 0xf0 && lead <= 0xf4
+							? 4
+							: 0
+		if (width === 0 || index + width > bytes.length) return undefined
+		const point = positions.take(width - 1).reduce<number | undefined>(
+			(value, position) => {
+				if (value === undefined) return undefined
+				const continuation = bytes[position] ?? 0
+				return (continuation & 0xc0) === 0x80 ? (value << 6) | (continuation & 0x3f) : undefined
+			},
+			width === 1 ? lead : lead & (0xff >> (width + 1)),
+		)
+		if (point === undefined) return undefined
+		if (width === 3 && point < 0x800) return undefined
+		if (width === 4 && point < 0x10000) return undefined
+		if (point >= 0xd800 && point <= 0xdfff) return undefined
+		if (point > 0x10ffff) return undefined
+		text.push(String.fromCodePoint(point))
 	}
+	return text.join('')
 }
 
 /**
@@ -633,3 +675,303 @@ export const FOREIGN_BYTES: readonly unknown[] = [
 	new ArrayBuffer(2),
 	new Proxy(new Uint8Array([104, 105]), {}),
 ]
+
+// ── The UTF-8 decode differential ────────────────────────────────────────────
+//
+// `decodeUTF8` delegates to the host, so the shipped walk in `decodeUTF8Oracle` is held against it
+// over two seeded populations, each sized to the property it serves.
+//
+// - The random buffers put every byte value at every position of a buffer short enough to hold any
+//   width at any alignment: 4,096 buffers of 0 to 15 bytes place each of the 256 values in the
+//   lead position about 16 times, so no lead class goes unread, and they cost milliseconds.
+// - Uniform random bytes are refused within a few bytes, so they rarely reach a refusal with valid
+//   text on both sides. The mutants do: each is a seeded well-formed text spanning every width, the
+//   surrogate neighbours, and the boundary code points, encoded and then carrying one substitution,
+//   insertion, deletion, or truncation. Half the substitutions and insertions draw from
+//   UTF8_EDGE_BYTES, where a UTF-8 rule changes its answer. 1,024 texts of up to 24 code points
+//   with 4 mutants each reach every refusal class deep in a buffer; every eighth text opens with a
+//   BOM, so a decoder that strips one disagrees on that population.
+
+/** Holds the bytes where a UTF-8 rule changes its answer, so a drawn edit lands on one often. */
+export const UTF8_EDGE_BYTES: readonly number[] = Object.freeze([
+	0x00, 0x7f, 0x80, 0x8f, 0x90, 0x9f, 0xa0, 0xbf, 0xc0, 0xc1, 0xc2, 0xdf, 0xe0, 0xed, 0xef, 0xf0,
+	0xf4, 0xf5, 0xff,
+])
+
+/** Holds the code point bands a drawn text spans: each UTF-8 width, split at the surrogates. */
+export const UTF8_BANDS: ReadonlyArray<readonly [number, number]> = Object.freeze([
+	[0x00, 0x7f],
+	[0x80, 0x7ff],
+	[0x800, 0xd7ff],
+	[0xe000, 0xffff],
+	[0x10000, 0x10ffff],
+])
+
+/** Holds the longest drawn text, in code points. */
+export const UTF8_TEXT_LIMIT = 24
+
+/** Holds the period at which a drawn text opens with a BOM. */
+export const UTF8_BOM_PERIOD = 8
+
+/**
+ * Draws a code point from two draws: the first picks a band or the boundary table, the second the
+ * point within it.
+ */
+export function drawCodePoint(selector: number, value: number): number {
+	const band = UTF8_BANDS[selector % (UTF8_BANDS.length + 1)]
+	if (band === undefined) return UTF8_BOUNDARIES[value % UTF8_BOUNDARIES.length]?.point ?? 0
+	const [low, high] = band
+	return low + (value % (high - low + 1))
+}
+
+/**
+ * Draws well-formed texts of 0 to UTF8_TEXT_LIMIT code points from a seed, every
+ * UTF8_BOM_PERIOD-th one opening with a BOM.
+ */
+export function buildUTF8Texts(seed: number, count: number): readonly string[] {
+	const stride = 1 + UTF8_TEXT_LIMIT * 2
+	const draws = buildDraws(seed, count * stride)
+	return Array.from({ length: count }, (_, index) => {
+		const cursor = index * stride
+		const length = (draws[cursor] ?? 0) % (UTF8_TEXT_LIMIT + 1)
+		const points = Array.from({ length }, (_point, position) =>
+			drawCodePoint(draws[cursor + 1 + position * 2] ?? 0, draws[cursor + 2 + position * 2] ?? 0),
+		)
+		const text = String.fromCodePoint(...points)
+		return index % UTF8_BOM_PERIOD === 0 ? `${BOM}${text}` : text
+	})
+}
+
+/**
+ * Applies one edit to a copy of the bytes: a substitution, an insertion, a deletion, or a
+ * truncation, chosen by `mutation`, at the position `position` selects. The edited byte is drawn
+ * from UTF8_EDGE_BYTES when `choice` is even and is `value`'s low byte otherwise.
+ */
+export function mutateBytes(
+	base: Uint8Array,
+	mutation: number,
+	position: number,
+	choice: number,
+	value: number,
+): Uint8Array<ArrayBuffer> {
+	const byte =
+		choice % 2 === 0 ? (UTF8_EDGE_BYTES[value % UTF8_EDGE_BYTES.length] ?? 0) : value & 0xff
+	const gap = position % (base.length + 1)
+	const at = base.length === 0 ? 0 : position % base.length
+	const edit = base.length === 0 ? 1 : mutation % 4
+	return Uint8Array.from(
+		edit === 0
+			? [...base.subarray(0, at), byte, ...base.subarray(at + 1)]
+			: edit === 1
+				? [...base.subarray(0, gap), byte, ...base.subarray(gap)]
+				: edit === 2
+					? [...base.subarray(0, at), ...base.subarray(at + 1)]
+					: [...base.subarray(0, gap)],
+	)
+}
+
+/** Encodes each text and follows its bytes with `rounds` seeded mutants of them. */
+export function buildUTF8Mutants(
+	texts: readonly string[],
+	seed: number,
+	rounds: number,
+): ReadonlyArray<Uint8Array<ArrayBuffer>> {
+	const draws = buildDraws(seed, texts.length * rounds * 4)
+	return texts.flatMap((text, index) => {
+		const base = UTF8_ENCODER.encode(text)
+		return [
+			base,
+			...Array.from({ length: rounds }, (_, round) => {
+				const cursor = (index * rounds + round) * 4
+				return mutateBytes(
+					base,
+					draws[cursor] ?? 0,
+					draws[cursor + 1] ?? 0,
+					draws[cursor + 2] ?? 0,
+					draws[cursor + 3] ?? 0,
+				)
+			}),
+		]
+	})
+}
+
+/** Draws buffers of 0 to `limit - 1` uniformly random bytes from a seed. */
+export function buildRandomBytes(
+	seed: number,
+	count: number,
+	limit: number,
+): ReadonlyArray<Uint8Array<ArrayBuffer>> {
+	const stride = limit
+	const draws = buildDraws(seed, count * stride)
+	return Array.from({ length: count }, (_, index) => {
+		const cursor = index * stride
+		const length = (draws[cursor] ?? 0) % limit
+		return Uint8Array.from(
+			{ length },
+			(_byte, position) => (draws[cursor + 1 + position] ?? 0) & 0xff,
+		)
+	})
+}
+
+/** Carries the well-formed texts the seeded UTF-8 sweeps draw. */
+export const UTF8_SEEDED_TEXTS: readonly string[] = buildUTF8Texts(0x75746638, 1024)
+
+/** Carries the encoded seeded texts, each followed by four seeded mutants. */
+export const UTF8_MUTANTS: ReadonlyArray<Uint8Array<ArrayBuffer>> = buildUTF8Mutants(
+	UTF8_SEEDED_TEXTS,
+	0x6d757461,
+	4,
+)
+
+/** Carries 4,096 seeded buffers of 0 to 15 uniformly random bytes. */
+export const UTF8_RANDOM: ReadonlyArray<Uint8Array<ArrayBuffer>> = buildRandomBytes(
+	0x72616e64,
+	4096,
+	16,
+)
+
+/**
+ * Pairs each refusal edge of the UTF-8 grammar with its admitted neighbour one step inside, each
+ * row naming the text the admitted side spells.
+ */
+export const UTF8_EDGE_PAIRS: ReadonlyArray<{
+	readonly admitted: readonly number[]
+	readonly text: string
+	readonly refused: readonly number[]
+	readonly reason: string
+}> = [
+	{ admitted: [0xc2, 0x80], text: '\u0080', refused: [0xc1, 0xbf], reason: 'C2 and C1' },
+	{
+		admitted: [0xe0, 0xa0, 0x80],
+		text: 'ࠀ',
+		refused: [0xe0, 0x9f, 0xbf],
+		reason: 'E0 A0 and E0 9F',
+	},
+	{
+		admitted: [0xed, 0x9f, 0xbf],
+		text: '퟿',
+		refused: [0xed, 0xa0, 0x80],
+		reason: 'ED 9F and ED A0',
+	},
+	{
+		admitted: [0xf0, 0x90, 0x80, 0x80],
+		text: '\u{10000}',
+		refused: [0xf0, 0x8f, 0xbf, 0xbf],
+		reason: 'F0 90 and F0 8F',
+	},
+	{
+		admitted: [0xf4, 0x8f, 0xbf, 0xbf],
+		text: '\u{10ffff}',
+		refused: [0xf4, 0x90, 0x80, 0x80],
+		reason: 'F4 8F and F4 90',
+	},
+]
+
+/** Lists each width's sequence cut short at the buffer's end, after an admitted byte. */
+export const UTF8_TRUNCATIONS: ReadonlyArray<{
+	readonly bytes: readonly number[]
+	readonly reason: string
+}> = [
+	{ bytes: [0x68, 0xc2], reason: 'a two-byte sequence missing one byte' },
+	{ bytes: [0x68, 0xe2], reason: 'a three-byte sequence missing two bytes' },
+	{ bytes: [0x68, 0xe2, 0x82], reason: 'a three-byte sequence missing one byte' },
+	{ bytes: [0x68, 0xf0], reason: 'a four-byte sequence missing three bytes' },
+	{ bytes: [0x68, 0xf0, 0x9f], reason: 'a four-byte sequence missing two bytes' },
+	{ bytes: [0x68, 0xf0, 0x9f, 0x98], reason: 'a four-byte sequence missing one byte' },
+]
+
+/** Lists code points a decoder could mistake for a signal, each with the bytes that spell it. */
+export const UTF8_KEPT: ReadonlyArray<{
+	readonly bytes: readonly number[]
+	readonly text: string
+	readonly reason: string
+}> = [
+	{ bytes: [0x00], text: '\u0000', reason: 'U+0000, which a C string reads as its end' },
+	{ bytes: [0xef, 0xbf, 0xbe], text: '￾', reason: 'U+FFFE, the byte-swapped BOM' },
+	{ bytes: [0xef, 0xbf, 0xbf], text: '￿', reason: 'U+FFFF, the last noncharacter of the BMP' },
+]
+
+/**
+ * Holds bytes over a buffer the caller supplies and counts the `slice` calls they receive, so a test
+ * reads whether a decoder copied the view before handing it to the host.
+ */
+export class RecordedBytes extends Uint8Array<ArrayBufferLike> {
+	#slices = 0
+
+	static get [Symbol.species](): Uint8ArrayConstructor {
+		return Uint8Array
+	}
+
+	constructor(buffer: ArrayBufferLike, values: readonly number[]) {
+		super(buffer, 0, values.length)
+		this.set(values)
+	}
+
+	get slices(): number {
+		return this.#slices
+	}
+
+	override slice(start?: number, end?: number): Uint8Array<ArrayBuffer> {
+		this.#slices += 1
+		return super.slice(start, end)
+	}
+}
+
+// ── The UTF-8 bench fixtures ─────────────────────────────────────────────────
+//
+// The cost cases `tests/src/core/helpers.bench.ts` reads. The mixed text is mostly ASCII with 2-,
+// 3-, and 4-byte runs, the shape of a JSON tokenizer file, and about 2 MB at UTF8_BENCH_RUNS runs.
+// The short texts are 1 to 23 characters, the shape of a vocabulary's tokens, at the call count a
+// model load makes.
+
+/** Holds the run count that puts the mixed bench text at about 2 MB. */
+export const UTF8_BENCH_RUNS = 85_000
+
+/** Holds the short-text count, which matches the decode calls of a model load's vocabulary. */
+export const UTF8_BENCH_STRINGS = 100_000
+
+/** Holds the code point range each run kind draws from: ASCII, 2-byte, 3-byte, and 4-byte. */
+export const UTF8_BENCH_RANGES: ReadonlyArray<readonly [number, number]> = Object.freeze([
+	[0x20, 0x7e],
+	[0x400, 0x4ff],
+	[0x4e00, 0x9fff],
+	[0x1f300, 0x1faff],
+])
+
+/**
+ * Draws a run of characters from a range of {@link UTF8_BENCH_RANGES}: 85 in 100 runs are ASCII of
+ * 4 to 48 characters, and the rest are 2-, 3-, or 4-byte runs of 1 to 12 characters.
+ */
+export function drawBenchRun(kind: number, length: number, start: number): string {
+	const pick = kind % 100
+	const range = UTF8_BENCH_RANGES[pick < 85 ? 0 : pick < 93 ? 1 : pick < 98 ? 2 : 3] ?? [0x20, 0x7e]
+	const [low, high] = range
+	const count = pick < 85 ? 4 + (length % 45) : 1 + (length % 12)
+	return String.fromCodePoint(
+		...Array.from({ length: count }, (_, index) => low + ((start + index * 7) % (high - low + 1))),
+	)
+}
+
+/** Draws the mixed bench text: `runs` seeded runs, joined. */
+export function buildBenchText(runs: number, seed: number): string {
+	const draws = buildDraws(seed, runs * 3)
+	return Array.from({ length: runs }, (_, index) =>
+		drawBenchRun(draws[index * 3] ?? 0, draws[index * 3 + 1] ?? 0, draws[index * 3 + 2] ?? 0),
+	).join('')
+}
+
+/** Draws short bench texts of 1 to 23 characters: 7 in 10 ASCII, 2 in 10 2-byte, 1 in 10 3-byte. */
+export function buildBenchStrings(count: number, seed: number): readonly string[] {
+	const draws = buildDraws(seed, count * 3)
+	return Array.from({ length: count }, (_, index) => {
+		const mix = (draws[index * 3 + 1] ?? 0) % 10
+		const [low, high] = UTF8_BENCH_RANGES[mix < 7 ? 0 : mix < 9 ? 1 : 2] ?? [0x20, 0x7e]
+		const start = draws[index * 3 + 2] ?? 0
+		return String.fromCodePoint(
+			...Array.from(
+				{ length: 1 + ((draws[index * 3] ?? 0) % 23) },
+				(_character, position) => low + ((start + position * 5) % (high - low + 1)),
+			),
+		)
+	})
+}
