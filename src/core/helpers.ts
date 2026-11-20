@@ -417,7 +417,8 @@ export function encodeUTF8(text: string): Uint8Array<ArrayBuffer> | undefined {
  * The host's fatal UTF-8 decoder reads the bytes, with `ignoreBOM` set: the round-trip law leaves
  * the decoder no byte it may discard, which is what keeps that leading BOM. A view over a
  * `SharedArrayBuffer` or a resizable `ArrayBuffer` is decoded from a copy, because a browser's
- * decoder can refuse one. `undefined` is the only failure mode; nothing here throws.
+ * decoder can refuse one. A view of length 0 decodes to `''`, a detached view and a view a shrink
+ * left out of bounds included. `undefined` is the only failure mode; nothing here throws.
  *
  * @param bytes - The bytes to decode.
  * @returns The decoded text, or `undefined` when `bytes` are not strict UTF-8.
@@ -429,9 +430,10 @@ export function encodeUTF8(text: string): Uint8Array<ArrayBuffer> | undefined {
  * ```
  */
 export function decodeUTF8(bytes: Uint8Array): string | undefined {
+	if (bytes.length === 0) return ''
 	// Chromium 153 refuses a view over a shared or a resizable buffer (read 2026-11-20), so copy it.
 	const view =
-		bytes.buffer instanceof ArrayBuffer && !bytes.buffer.resizable ? bytes : bytes.slice()
+		bytes.buffer instanceof ArrayBuffer && !bytes.buffer.resizable ? bytes : new Uint8Array(bytes)
 	try {
 		return UTF8_DECODER.decode(view)
 	} catch {
