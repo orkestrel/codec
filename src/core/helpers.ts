@@ -306,11 +306,8 @@ export function measureBase64URL(text: string): number | undefined {
  */
 export function measureHex(text: string): number | undefined {
 	if (text.length % 2 !== 0) return undefined
-	for (const position of Array.from({ length: text.length / 2 }).keys()) {
-		const index = position * 2
-		const high = HEX_LOOKUP[text.charAt(index)]
-		const low = HEX_LOOKUP[text.charAt(index + 1)]
-		if (high === undefined || low === undefined) return undefined
+	for (let index = 0; index < text.length; index++) {
+		if (HEX_LOOKUP[text.charAt(index)] === undefined) return undefined
 	}
 	return text.length / 2
 }
