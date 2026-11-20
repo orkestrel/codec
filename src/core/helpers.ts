@@ -241,8 +241,7 @@ export function decodeHex(text: string): Uint8Array<ArrayBuffer> | undefined {
 export function measureBase64(text: string): number | undefined {
 	if (text.length % 4 !== 0) return undefined
 	const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0
-	for (const group of Array.from({ length: text.length / 4 }).keys()) {
-		const index = group * 4
+	for (let index = 0; index < text.length; index += 4) {
 		const tail = text.length - index === 4 ? padding : 0
 		const first = BASE64_LOOKUP[text.charAt(index)]
 		const second = BASE64_LOOKUP[text.charAt(index + 1)]
