@@ -164,10 +164,12 @@ export function decodeBase64URL(text: string): Uint8Array<ArrayBuffer> | undefin
  * ```
  */
 export function encodeHex(bytes: Uint8Array): string {
-	return Iterator.from(bytes)
-		.map((byte) => HEX_ALPHABET.charAt((byte >> 4) & 0x0f) + HEX_ALPHABET.charAt(byte & 0x0f))
-		.toArray()
-		.join('')
+	let text = ''
+	for (let index = 0; index < bytes.length; index++) {
+		const byte = bytes[index] ?? 0
+		text += HEX_ALPHABET.charAt(byte >> 4) + HEX_ALPHABET.charAt(byte & 0x0f)
+	}
+	return text
 }
 
 /**

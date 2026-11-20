@@ -6,6 +6,7 @@ import {
 	buildRandomBytes,
 	buildUTF8Mutants,
 	buildUTF8Texts,
+	createIteratedBytes,
 	drawBenchRun,
 	drawCodePoint,
 	mutateBytes,
@@ -157,6 +158,15 @@ describe('setup oracles', () => {
 		expect(measureBase64Oracle('aQ==')).toBe(1)
 		expect(measureBase64Oracle('aa==')).toBeUndefined()
 		expect(measureBase64Oracle('aGk')).toBeUndefined()
+	})
+
+	it('builds bytes whose iterator yields other values than their indices hold', () => {
+		const bytes = createIteratedBytes([0xab, 0xcd], [0x01])
+
+		expect([...bytes]).toEqual([0x01])
+		expect(bytes[0]).toBe(0xab)
+		expect(bytes[1]).toBe(0xcd)
+		expect(bytes).toHaveLength(2)
 	})
 
 	it('matches byte answers by presence and content', () => {

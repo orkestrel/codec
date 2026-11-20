@@ -32,6 +32,7 @@ import { WINDOWS_1252_HIGH } from '../../../src/core/constants.js'
 import {
 	decodeUTF8Oracle,
 	decodeUTF16LEOracle,
+	createIteratedBytes,
 	decodeHexOracle,
 	encodeHexOracle,
 	encodeUTF8Oracle,
@@ -1062,5 +1063,11 @@ describe('the counted walks — each answers what its shipped walk answered', ()
 		expect(buffers.length).toBeGreaterThan(OCTETS.length)
 		expect(drift).toEqual([])
 		expect(encodeHex(OCTETS.subarray(250))).toBe('fafbfcfdfeff')
+	})
+
+	it('encodes the indexed bytes of a view whose own iterator is replaced', () => {
+		const bytes = createIteratedBytes([0xab, 0xcd], [0x01])
+
+		expect(encodeHex(bytes)).toBe('abcd')
 	})
 })

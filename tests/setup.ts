@@ -430,6 +430,20 @@ export function encodeUTF8Oracle(text: string): Uint8Array<ArrayBuffer> | undefi
 	return Uint8Array.from(bytes)
 }
 
+/**
+ * Builds bytes whose own `Symbol.iterator` yields `yielded` instead of the indexed bytes, so a test
+ * reads whether a function takes the bytes by index or through the iterator.
+ */
+export function createIteratedBytes(
+	values: readonly number[],
+	yielded: readonly number[],
+): Uint8Array<ArrayBuffer> {
+	const bytes = Uint8Array.from(values)
+	const iterator = [...yielded]
+	Object.defineProperty(bytes, Symbol.iterator, { value: iterator[Symbol.iterator].bind(iterator) })
+	return bytes
+}
+
 /** Checks whether two byte answers are both absent, or both present with equal bytes in order. */
 export function matchesOptionalBytes(
 	left: Uint8Array | undefined,

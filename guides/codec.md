@@ -512,7 +512,8 @@ measureUTF8('\ud800') // undefined — ill-formed text has no UTF-8 spelling
   `encodeUTF8`, `measureUTF8`, `measureHex`, `measureBase64`, `decodeHex`, and `encodeHex` are
   each held against the walk it shipped in codec 0.0.12, over the populations the law sweeps read
   plus the rows a code-unit walk could miscount: astral pairs, lone and reversed surrogates,
-  odd-length hex, and uppercase hex.
+  odd-length hex, and uppercase hex. A view whose own iterator is replaced encodes the hex of its
+  indexed bytes.
 
   The Windows-1252 high table carries another reading that is not a platform decoder at all. The
   WHATWG index defines all 256 slots, so it is silent on exactly the omissions that make this code
