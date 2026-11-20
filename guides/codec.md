@@ -486,8 +486,7 @@ measureUTF8('\ud800') // undefined — ill-formed text has no UTF-8 spelling
 
   The platform's own codings run as oracles over the populations they agree on, each one probed
   before a sweep was written to it. `decodeUTF16LE` is held against a fatal `TextDecoder` carrying
-  `ignoreBOM` over the whole two-byte space, `encodeUTF8` against
-  `TextEncoder` over the well-formed texts, and `decodeWindows1252` against the WHATWG index over
+  `ignoreBOM` over the whole two-byte space, and `decodeWindows1252` against the WHATWG index over
   the bytes that index and this coding both define. `decodeLatin1` is held against
   `String.fromCharCode` rather than against the `latin1` label, and an assertion pins the label's
   disagreement to the 0x80-0x9F band so a later reader cannot quietly adopt it as the oracle.
@@ -509,6 +508,11 @@ measureUTF8('\ud800') // undefined — ill-formed text has no UTF-8 spelling
   neighbour, truncation at every width, a subarray at a nonzero offset, a refused call followed by
   an accepted one, and the copy a view over a `SharedArrayBuffer` or a resizable `ArrayBuffer`
   takes before it reaches the host.
+
+  `encodeUTF8`, `measureUTF8`, `measureHex`, `measureBase64`, `decodeHex`, and `encodeHex` are
+  each held against the walk it shipped in codec 0.0.12, over the populations the law sweeps read
+  plus the rows a code-unit walk could miscount: astral pairs, lone and reversed surrogates,
+  odd-length hex, and uppercase hex.
 
   The Windows-1252 high table carries another reading that is not a platform decoder at all. The
   WHATWG index defines all 256 slots, so it is silent on exactly the omissions that make this code

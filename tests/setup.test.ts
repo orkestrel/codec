@@ -17,7 +17,13 @@ import {
 	UTF8_TEXT_LIMIT,
 	decodeUTF16LEOracle,
 	decodeUTF8Oracle,
+	decodeHexOracle,
+	encodeHexOracle,
 	encodeUTF8Oracle,
+	measureBase64Oracle,
+	measureHexOracle,
+	matchesOptionalBytes,
+	measureUTF8Oracle,
 	HEX_OCTETS,
 	OCTETS,
 	RFC_STANDARD,
@@ -127,8 +133,44 @@ describe('setup oracles', () => {
 		)
 	})
 
-	it('retains the platform encoder replacement behavior for a lone surrogate', () => {
-		expect(encodeUTF8Oracle('\ud800')).toEqual(new Uint8Array([0xef, 0xbf, 0xbd]))
+	it('refuses a lone surrogate where the platform encoder replaces it', () => {
+		expect(new TextEncoder().encode('\ud800')).toEqual(new Uint8Array([0xef, 0xbf, 0xbd]))
+		expect(encodeUTF8Oracle('\ud800')).toBeUndefined()
+	})
+
+	it('measures UTF-8 widths and refuses a lone surrogate', () => {
+		expect(measureUTF8Oracle('A¢€\u{1f600}')).toBe(10)
+		expect(measureUTF8Oracle('')).toBe(0)
+		expect(measureUTF8Oracle('\udc00')).toBeUndefined()
+	})
+
+	it('measures and decodes lowercase hex and refuses odd and uppercase text', () => {
+		expect(measureHexOracle('00ff')).toBe(2)
+		expect(decodeHexOracle('00ff')).toEqual(new Uint8Array([0x00, 0xff]))
+		expect(measureHexOracle('0')).toBeUndefined()
+		expect(decodeHexOracle('FF')).toBeUndefined()
+		expect(measureHexOracle('')).toBe(0)
+	})
+
+	it('measures canonical Base64 and refuses a nonzero unused bit', () => {
+		expect(measureBase64Oracle('aGk=')).toBe(2)
+		expect(measureBase64Oracle('aQ==')).toBe(1)
+		expect(measureBase64Oracle('aa==')).toBeUndefined()
+		expect(measureBase64Oracle('aGk')).toBeUndefined()
+	})
+
+	it('matches byte answers by presence and content', () => {
+		expect(matchesOptionalBytes(undefined, undefined)).toBe(true)
+		expect(matchesOptionalBytes(new Uint8Array([1, 2]), new Uint8Array([1, 2]))).toBe(true)
+		expect(matchesOptionalBytes(new Uint8Array([1, 2]), undefined)).toBe(false)
+		expect(matchesOptionalBytes(undefined, new Uint8Array())).toBe(false)
+		expect(matchesOptionalBytes(new Uint8Array([1, 2]), new Uint8Array([2, 1]))).toBe(false)
+		expect(matchesOptionalBytes(new Uint8Array([1]), new Uint8Array([1, 0]))).toBe(false)
+	})
+
+	it('encodes bytes as lowercase hex digit pairs', () => {
+		expect(encodeHexOracle(new Uint8Array([0x00, 0x0f, 0xab, 0xff]))).toBe('000fabff')
+		expect(encodeHexOracle(new Uint8Array())).toBe('')
 	})
 
 	it('returns empty results for empty oracle inputs', () => {

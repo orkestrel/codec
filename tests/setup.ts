@@ -1,4 +1,5 @@
 import { BOM, encodeBase64, encodeBase64URL, encodeHex } from '@src/core'
+import { BASE64_LOOKUP, HEX_ALPHABET, HEX_LOOKUP } from '../src/core/constants.js'
 
 /** Builds the distinct prefixes of every fixed-width word in least-significant-digit order. */
 export function buildCodecTexts(characters: readonly string[], width: number): readonly string[] {
@@ -337,8 +338,9 @@ export const HEX_MEASURE_TEXTS: readonly string[] = [
 //   `decodeUTF8` set it, because this package's round-trip law leaves its decoders no byte they may
 //   discard.
 //
-// `TextEncoder` is the UTF-8 encode oracle over well-formed text alone: the probe read `EF BF BD`
-// for a lone surrogate, so it replaces where `encodeUTF8` refuses.
+// `encodeUTF8` delegates to `TextEncoder` after its well-formedness check, so its oracle is the walk
+// it shipped before it delegated. The probe read `EF BF BD` from `TextEncoder` for a lone surrogate,
+// so the platform encoder replaces where `encodeUTF8` refuses.
 
 const UTF16LE_DECODER = new TextDecoder('utf-16le', { fatal: true, ignoreBOM: true })
 const WINDOWS_1252_DECODER = new TextDecoder('windows-1252')
@@ -399,9 +401,104 @@ export function decodeUTF16LEOracle(bytes: Uint8Array): string | undefined {
 	}
 }
 
-/** Encodes well-formed text through the platform's UTF-8 encoder, which cannot report a refusal. */
-export function encodeUTF8Oracle(text: string): Uint8Array {
-	return UTF8_ENCODER.encode(text)
+/**
+ * Encodes text to UTF-8 by walking its code points, the walk `encodeUTF8` shipped in codec 0.0.12,
+ * answering `undefined` for ill-formed text.
+ *
+ * `encodeUTF8` delegates to the host's encoder, so this walk is the second mechanism that can
+ * disagree with it.
+ */
+export function encodeUTF8Oracle(text: string): Uint8Array<ArrayBuffer> | undefined {
+	if (!text.isWellFormed()) return undefined
+	const bytes = Array.from(text).flatMap((character) => {
+		const point = character.codePointAt(0) ?? 0
+		if (point < 0x80) {
+			return [point]
+		} else if (point < 0x800) {
+			return [0xc0 | (point >> 6), 0x80 | (point & 0x3f)]
+		} else if (point < 0x10000) {
+			return [0xe0 | (point >> 12), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f)]
+		} else {
+			return [
+				0xf0 | (point >> 18),
+				0x80 | ((point >> 12) & 0x3f),
+				0x80 | ((point >> 6) & 0x3f),
+				0x80 | (point & 0x3f),
+			]
+		}
+	})
+	return Uint8Array.from(bytes)
+}
+
+/** Checks whether two byte answers are both absent, or both present with equal bytes in order. */
+export function matchesOptionalBytes(
+	left: Uint8Array | undefined,
+	right: Uint8Array | undefined,
+): boolean {
+	if (left === undefined || right === undefined) return left === right
+	return left.length === right.length && left.every((byte, index) => right[index] === byte)
+}
+
+/** Measures UTF-8 by reducing over code points, the walk `measureUTF8` shipped in codec 0.0.12. */
+export function measureUTF8Oracle(text: string): number | undefined {
+	if (!text.isWellFormed()) return undefined
+	return Iterator.from(text).reduce((total, character) => {
+		const point = character.codePointAt(0) ?? 0
+		return total + (point < 0x80 ? 1 : point < 0x800 ? 2 : point < 0x10000 ? 3 : 4)
+	}, 0)
+}
+
+/** Measures hex text a digit pair at a time, the walk `measureHex` shipped in codec 0.0.12. */
+export function measureHexOracle(text: string): number | undefined {
+	if (text.length % 2 !== 0) return undefined
+	for (const position of Array.from({ length: text.length / 2 }).keys()) {
+		const index = position * 2
+		const high = HEX_LOOKUP[text.charAt(index)]
+		const low = HEX_LOOKUP[text.charAt(index + 1)]
+		if (high === undefined || low === undefined) return undefined
+	}
+	return text.length / 2
+}
+
+/** Measures Base64 text a group at a time, the walk `measureBase64` shipped in codec 0.0.12. */
+export function measureBase64Oracle(text: string): number | undefined {
+	if (text.length % 4 !== 0) return undefined
+	const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0
+	for (const group of Array.from({ length: text.length / 4 }).keys()) {
+		const index = group * 4
+		const tail = text.length - index === 4 ? padding : 0
+		const first = BASE64_LOOKUP[text.charAt(index)]
+		const second = BASE64_LOOKUP[text.charAt(index + 1)]
+		const third = tail === 2 ? 0 : BASE64_LOOKUP[text.charAt(index + 2)]
+		const fourth = tail === 0 ? BASE64_LOOKUP[text.charAt(index + 3)] : 0
+		if (first === undefined || second === undefined) return undefined
+		if (third === undefined || fourth === undefined) return undefined
+		if (tail === 2 && (second & 0x0f) !== 0) return undefined
+		if (tail === 1 && (third & 0x03) !== 0) return undefined
+	}
+	return (text.length / 4) * 3 - padding
+}
+
+/** Decodes hex text over the bytes' own keys, the walk `decodeHex` shipped in codec 0.0.12. */
+export function decodeHexOracle(text: string): Uint8Array<ArrayBuffer> | undefined {
+	if (text.length % 2 !== 0) return undefined
+	const bytes = new Uint8Array(text.length / 2)
+	for (const position of bytes.keys()) {
+		const index = position * 2
+		const high = HEX_LOOKUP[text.charAt(index)]
+		const low = HEX_LOOKUP[text.charAt(index + 1)]
+		if (high === undefined || low === undefined) return undefined
+		bytes[index / 2] = (high << 4) | low
+	}
+	return bytes
+}
+
+/** Encodes bytes as hex through an iterator chain, the walk `encodeHex` shipped in codec 0.0.12. */
+export function encodeHexOracle(bytes: Uint8Array): string {
+	return Iterator.from(bytes)
+		.map((byte) => HEX_ALPHABET.charAt((byte >> 4) & 0x0f) + HEX_ALPHABET.charAt(byte & 0x0f))
+		.toArray()
+		.join('')
 }
 
 /**
@@ -691,6 +788,24 @@ export const FOREIGN_BYTES: readonly unknown[] = [
 //   UTF8_EDGE_BYTES, where a UTF-8 rule changes its answer. 1,024 texts of up to 24 code points
 //   with 4 mutants each reach every refusal class deep in a buffer; every eighth text opens with a
 //   BOM, so a decoder that strips one disagrees on that population.
+
+/**
+ * Lists texts built from surrogates: astral pairs, lone leads and trails, and pairs broken by order
+ * or by a neighbour, so a code-unit walk meets each the way a code-point walk did.
+ */
+export const SURROGATE_TEXTS: readonly string[] = Object.freeze([
+	'😀',
+	'a😀b',
+	'\u{10000}\u{10ffff}',
+	'𐀀𐀀',
+	'\ud83d',
+	'\ude00',
+	'\ude00\ud83d',
+	'\ud83d😀',
+	'😀\ude00',
+	'\u{10ffff}\ud800',
+	'é\udbff',
+])
 
 /** Holds the bytes where a UTF-8 rule changes its answer, so a drawn edit lands on one often. */
 export const UTF8_EDGE_BYTES: readonly number[] = Object.freeze([

@@ -32,7 +32,14 @@ import { WINDOWS_1252_HIGH } from '../../../src/core/constants.js'
 import {
 	decodeUTF8Oracle,
 	decodeUTF16LEOracle,
+	decodeHexOracle,
+	encodeHexOracle,
 	encodeUTF8Oracle,
+	measureBase64Oracle,
+	measureHexOracle,
+	matchesOptionalBytes,
+	measureUTF8Oracle,
+	SURROGATE_TEXTS,
 	HEX_MEASURE_TEXTS,
 	HEX_MEASURES,
 	HEX_OCTETS,
@@ -745,10 +752,10 @@ describe('the oracles — the same codings, read by a mechanism that can disagre
 		expect(drift).toEqual([])
 	})
 
-	it('encodes every well-formed text the way the platform encoder does', () => {
+	it('encodes every well-formed text the way the shipped walk does', () => {
 		const drift = TEXTS.flatMap((text) => {
 			const ours = requireValue(encodeUTF8(text), JSON.stringify(text))
-			const theirs = encodeUTF8Oracle(text)
+			const theirs = requireValue(encodeUTF8Oracle(text), JSON.stringify(text))
 			if (ours.length !== theirs.length) return [`length ${JSON.stringify(text)}`]
 			return theirs.some((byte, index) => ours[index] !== byte) ? [JSON.stringify(text)] : []
 		})
@@ -956,5 +963,104 @@ describe('the host decoder — decodeUTF8 answers what the shipped walk answered
 		expect(results.filter((result) => !result.admitted).length).toBeGreaterThan(0)
 		expect(results.filter((result) => result.stripping).length).toBeGreaterThan(0)
 		expect(results.filter((result) => result.lenient).length).toBeGreaterThan(0)
+	})
+})
+
+// Six walks moved to counted loops: `measureHex`, `measureBase64`, `measureUTF8`, `decodeHex`, and
+// `encodeHex` index their input instead of allocating a position array or an iterator chain, and
+// `encodeUTF8` hands well-formed text to the host's encoder. Each row holds the function against
+// the walk it shipped in codec 0.0.12 over the populations the law sweeps already read, plus the
+// rows a code-unit walk could miscount: lone surrogates, astral pairs, odd-length hex, and
+// uppercase hex. A count beside each row shows its population reaches both answers.
+describe('the counted walks — each answers what its shipped walk answered', () => {
+	const hexTexts = [...HEX_MEASURE_TEXTS, 'abc', 'ABCD', 'aBcD', '0A', 'a', '00FF', 'ff00ff0']
+	const utf8Texts = [...UTF8_MEASURE_TEXTS, ...UTF8_SEEDED_TEXTS, ...SURROGATE_TEXTS]
+
+	it('measures every hex text the way the shipped walk does', () => {
+		const answers = hexTexts.map((text) => ({
+			text,
+			ours: measureHex(text),
+			theirs: measureHexOracle(text),
+		}))
+
+		expect(answers.filter((row) => row.ours !== row.theirs)).toEqual([])
+		expect(answers.filter((row) => row.theirs === undefined).length).toBeGreaterThan(0)
+		expect(answers.filter((row) => row.theirs !== undefined).length).toBeGreaterThan(0)
+	})
+
+	it('decodes every hex text the way the shipped walk does', () => {
+		const answers = hexTexts.map((text) => ({
+			text,
+			ours: decodeHex(text),
+			theirs: decodeHexOracle(text),
+		}))
+
+		expect(
+			answers.filter((row) => !matchesOptionalBytes(row.ours, row.theirs)).map((row) => row.text),
+		).toEqual([])
+		expect(answers.filter((row) => row.theirs === undefined).length).toBeGreaterThan(0)
+		expect(answers.filter((row) => (row.theirs?.length ?? 0) > 1).length).toBeGreaterThan(0)
+	})
+
+	it('measures every Base64 text the way the shipped walk does', () => {
+		const answers = MEASURE_TEXTS.map((text) => ({
+			text,
+			ours: measureBase64(text),
+			theirs: measureBase64Oracle(text),
+		}))
+
+		expect(answers.filter((row) => row.ours !== row.theirs)).toEqual([])
+		expect(answers.filter((row) => row.theirs === undefined).length).toBeGreaterThan(0)
+		expect(answers.filter((row) => (row.theirs ?? 0) > 3).length).toBeGreaterThan(0)
+	})
+
+	it('measures every UTF-8 text the way the shipped walk does, surrogates included', () => {
+		const answers = utf8Texts.map((text) => ({
+			text,
+			ours: measureUTF8(text),
+			theirs: measureUTF8Oracle(text),
+		}))
+
+		expect(answers.filter((row) => row.ours !== row.theirs)).toEqual([])
+		expect(answers.filter((row) => row.theirs === undefined).length).toBeGreaterThan(0)
+		expect(SURROGATE_TEXTS.map((text) => measureUTF8(text))).toEqual([
+			4,
+			6,
+			8,
+			8,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+		])
+	})
+
+	it('encodes every UTF-8 text the way the shipped walk does, surrogates included', () => {
+		const answers = utf8Texts.map((text) => ({
+			text,
+			ours: encodeUTF8(text),
+			theirs: encodeUTF8Oracle(text),
+		}))
+		const leading = answers.filter((row) => row.text.startsWith(BOM) && row.ours?.[0] === 0xef)
+
+		expect(
+			answers.filter((row) => !matchesOptionalBytes(row.ours, row.theirs)).map((row) => row.text),
+		).toEqual([])
+		expect(answers.filter((row) => row.theirs === undefined).length).toBeGreaterThan(0)
+		expect(leading.length).toBeGreaterThan(0)
+		expect(encodeUTF8('😀')).toStrictEqual(new Uint8Array([0xf0, 0x9f, 0x98, 0x80]))
+		expect(encodeUTF8('')).toStrictEqual(new Uint8Array())
+	})
+
+	it('encodes every byte buffer as hex the way the shipped walk does', () => {
+		const buffers = [OCTETS, OCTETS.subarray(250), ...UTF8_RANDOM, ...UTF8_MUTANTS]
+		const drift = buffers.filter((bytes) => encodeHex(bytes) !== encodeHexOracle(bytes))
+
+		expect(buffers.length).toBeGreaterThan(OCTETS.length)
+		expect(drift).toEqual([])
+		expect(encodeHex(OCTETS.subarray(250))).toBe('fafbfcfdfeff')
 	})
 })
