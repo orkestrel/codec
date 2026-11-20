@@ -32,7 +32,13 @@ import { WINDOWS_1252_HIGH } from '../../../src/core/constants.js'
 import {
 	decodeUTF8Oracle,
 	decodeUTF16LEOracle,
+	createIteratedBytes,
+	encodeHexOracle,
 	encodeUTF8Oracle,
+	measureBase64Oracle,
+	measureHexOracle,
+	measureUTF8Oracle,
+	SURROGATE_TEXTS,
 	HEX_MEASURE_TEXTS,
 	HEX_MEASURES,
 	HEX_OCTETS,
@@ -45,14 +51,21 @@ import {
 	MEASURES,
 	OCTETS,
 	RFC_STANDARD,
+	RecordedBytes,
 	RFC_URL,
 	SEXTETS,
 	SWEEP,
 	TEXTS,
 	UTF8_BOUNDARIES,
+	UTF8_EDGE_PAIRS,
+	UTF8_KEPT,
 	UTF8_MEASURE_TEXTS,
 	UTF8_MEASURES,
+	UTF8_MUTANTS,
+	UTF8_RANDOM,
 	UTF8_REFUSALS,
+	UTF8_SEEDED_TEXTS,
+	UTF8_TRUNCATIONS,
 	UTF16_REFUSALS,
 	VECTORS,
 	WINDOWS_1252_INDEX,
@@ -620,7 +633,7 @@ describe('the strict refusals — each charset door, pinned', () => {
 	})
 })
 
-describe('the platform oracles — the same codings, read by a mechanism that can disagree', () => {
+describe('the oracles — the same codings, read by a mechanism that can disagree', () => {
 	it('decodes every byte pair the way the strict UTF-8 and UTF-16LE decoders do', () => {
 		const drift = Array.from(OCTETS).flatMap((first) =>
 			Array.from(OCTETS).flatMap((second) => {
@@ -802,5 +815,225 @@ describe('the platform oracles — the same codings, read by a mechanism that ca
 		// band. This assertion is what stops a later reader reaching for that label as the oracle.
 		expect(labelDisagrees.length).toBeGreaterThan(0)
 		expect(labelDisagrees.every((value) => value >= 0x80 && value <= 0x9f)).toBe(true)
+	})
+})
+
+// `decodeUTF8` hands its bytes to the host's fatal decoder. These rows pin what that delegation must
+// keep: the shipped walk's answer for every buffer, the refusal set the doc block names, the BOM
+// kept as data, the views the declared type admits, and a shared decoder that carries nothing from
+// one call to the next.
+describe('the host decoder — decodeUTF8 answers what the shipped walk answered', () => {
+	it('decodes the empty buffer to the empty text', () => {
+		expect(decodeUTF8(new Uint8Array())).toBe('')
+		expect(decodeUTF8(new Uint8Array(new ArrayBuffer(8), 8))).toBe('')
+	})
+
+	it('keeps a leading and a mid-stream BOM as U+FEFF', () => {
+		expect(decodeUTF8(new Uint8Array([0xef, 0xbb, 0xbf]))).toBe(BOM)
+		expect(decodeUTF8(new Uint8Array([0xef, 0xbb, 0xbf, 0xef, 0xbb, 0xbf]))).toBe(`${BOM}${BOM}`)
+		expect(decodeUTF8(new Uint8Array([0x68, 0xef, 0xbb, 0xbf, 0x69]))).toBe(`h${BOM}i`)
+	})
+
+	for (const row of UTF8_KEPT) {
+		it(`keeps ${row.reason}`, () => {
+			expect(decodeUTF8(new Uint8Array(row.bytes))).toBe(row.text)
+			expect(decodeUTF8(new Uint8Array([0x68, ...row.bytes, 0x69]))).toBe(`h${row.text}i`)
+		})
+	}
+
+	for (const row of UTF8_EDGE_PAIRS) {
+		it(`admits and refuses either side of the ${row.reason} edge`, () => {
+			expect(decodeUTF8(new Uint8Array(row.admitted))).toBe(row.text)
+			expect(decodeUTF8(new Uint8Array(row.refused))).toBeUndefined()
+			expect(decodeUTF8Oracle(new Uint8Array(row.admitted))).toBe(row.text)
+			expect(decodeUTF8Oracle(new Uint8Array(row.refused))).toBeUndefined()
+		})
+	}
+
+	for (const row of UTF8_TRUNCATIONS) {
+		it(`refuses ${row.reason} at the buffer's end`, () => {
+			expect(decodeUTF8(new Uint8Array(row.bytes))).toBeUndefined()
+			expect(decodeUTF8(new Uint8Array(row.bytes.slice(0, 1)))).toBe('h')
+		})
+	}
+
+	it('decodes a subarray at a nonzero byteOffset from its own bytes alone', () => {
+		const buffer = new Uint8Array([0xe2, 0x82, 0xac, 0x68, 0x69, 0xe2, 0x82])
+		const view = buffer.subarray(3, 5)
+
+		expect(view.byteOffset).toBe(3)
+		expect(decodeUTF8(view)).toBe('hi')
+		expect(decodeUTF8(buffer.subarray(1, 5))).toBeUndefined()
+		expect(decodeUTF8(buffer.subarray(0, 5))).toBe('€hi')
+		expect(decodeUTF8(buffer.subarray(3))).toBeUndefined()
+	})
+
+	it('decodes a view over a SharedArrayBuffer from a copy', () => {
+		const bytes = new RecordedBytes(new SharedArrayBuffer(4), [0x68, 0xe2, 0x82, 0xac])
+		const refused = new RecordedBytes(new SharedArrayBuffer(3), [0x68, 0xe2, 0x82])
+		const growable = new RecordedBytes(new SharedArrayBuffer(2, { maxByteLength: 8 }), [0x68, 0x69])
+
+		expect(bytes.buffer).toBeInstanceOf(SharedArrayBuffer)
+		expect(decodeUTF8(bytes)).toBe('h€')
+		expect(bytes.slices).toBe(1)
+		expect(decodeUTF8(refused)).toBeUndefined()
+		expect(refused.slices).toBe(1)
+		expect(decodeUTF8(growable)).toBe('hi')
+		expect(growable.slices).toBe(1)
+		expect(decodeUTF8(new Uint8Array(new SharedArrayBuffer(0)))).toBe('')
+	})
+
+	it('decodes a view over a resizable ArrayBuffer from a copy', () => {
+		const bytes = new RecordedBytes(
+			new ArrayBuffer(4, { maxByteLength: 16 }),
+			[0x68, 0xe2, 0x82, 0xac],
+		)
+
+		expect(decodeUTF8(bytes)).toBe('h€')
+		expect(bytes.slices).toBe(1)
+	})
+
+	it('decodes a view over a fixed-length ArrayBuffer without a copy', () => {
+		const bytes = new RecordedBytes(new ArrayBuffer(4), [0x68, 0xe2, 0x82, 0xac])
+
+		expect(decodeUTF8(bytes)).toBe('h€')
+		expect(bytes.slices).toBe(0)
+	})
+
+	it('answers a refused call and then an accepted call on the same module instance', () => {
+		expect(decodeUTF8(new Uint8Array([0xe2, 0x82]))).toBeUndefined()
+		expect(decodeUTF8(new Uint8Array([0xac]))).toBeUndefined()
+		expect(decodeUTF8(new Uint8Array([0xe2, 0x82, 0xac]))).toBe('€')
+		expect(decodeUTF8(new Uint8Array([0x68, 0xc0, 0x80]))).toBeUndefined()
+		expect(decodeUTF8(new Uint8Array([0x68, 0x69]))).toBe('hi')
+	})
+
+	it('round-trips every seeded text through encodeUTF8 and decodeUTF8', () => {
+		const drift = UTF8_SEEDED_TEXTS.filter((text) => {
+			const bytes = encodeUTF8(text)
+			return bytes === undefined || decodeUTF8(bytes) !== text
+		})
+		const leading = UTF8_SEEDED_TEXTS.filter((text) => text.startsWith(BOM)).length
+
+		expect(UTF8_SEEDED_TEXTS.length).toBeGreaterThan(0)
+		expect(leading).toBeGreaterThan(0)
+		expect(drift).toEqual([])
+	})
+
+	// Each population runs against two controls beside the oracle: a fatal decoder that strips a
+	// leading BOM and a decoder that replaces instead of refusing. Each must disagree with the oracle
+	// somewhere in the population, which shows the population reaches the BOM rule and the refusals.
+	it('decodes every seeded random buffer the way the shipped walk does', () => {
+		const stripping = new TextDecoder('utf-8', { fatal: true })
+		const lenient = new TextDecoder('utf-8', { ignoreBOM: true })
+		const results = UTF8_RANDOM.map((bytes, index) => {
+			const expected = decodeUTF8Oracle(bytes)
+			return {
+				drift: decodeUTF8(bytes) !== expected ? [index] : [],
+				admitted: expected !== undefined,
+				lenient: lenient.decode(bytes) !== expected,
+			}
+		})
+		const leads = new Set(UTF8_RANDOM.flatMap((bytes) => (bytes.length > 0 ? [bytes[0]] : [])))
+
+		expect(results.flatMap((result) => result.drift)).toEqual([])
+		expect(results.filter((result) => result.admitted).length).toBeGreaterThan(0)
+		expect(results.filter((result) => result.lenient).length).toBeGreaterThan(0)
+		expect(leads.size).toBe(256)
+		expect(stripping.decode(new Uint8Array([0xef, 0xbb, 0xbf]))).toBe('')
+	})
+
+	it('decodes every seeded mutation of valid UTF-8 the way the shipped walk does', () => {
+		const stripping = new TextDecoder('utf-8', { fatal: true })
+		const lenient = new TextDecoder('utf-8', { ignoreBOM: true })
+		const results = UTF8_MUTANTS.map((bytes, index) => {
+			const expected = decodeUTF8Oracle(bytes)
+			const control = expected === undefined ? undefined : stripping.decode(bytes)
+			return {
+				drift: decodeUTF8(bytes) !== expected ? [index] : [],
+				admitted: expected !== undefined,
+				stripping: control !== expected,
+				lenient: lenient.decode(bytes) !== expected,
+			}
+		})
+
+		expect(results.flatMap((result) => result.drift)).toEqual([])
+		expect(results.filter((result) => result.admitted).length).toBeGreaterThan(0)
+		expect(results.filter((result) => !result.admitted).length).toBeGreaterThan(0)
+		expect(results.filter((result) => result.stripping).length).toBeGreaterThan(0)
+		expect(results.filter((result) => result.lenient).length).toBeGreaterThan(0)
+	})
+})
+
+// Four walks moved to counted loops: `measureHex`, `measureBase64`, `measureUTF8`, and `encodeHex`
+// index their input instead of allocating a position array or an iterator chain. Each row holds the
+// function against the walk it shipped in codec 0.0.12 over the populations the law sweeps already
+// read, plus the rows a code-unit walk could miscount: lone surrogates, astral pairs, odd-length
+// hex, and uppercase hex. A count beside each row shows its population reaches both answers.
+describe('the counted walks — each answers what its shipped walk answered', () => {
+	const hexTexts = [...HEX_MEASURE_TEXTS, 'abc', 'ABCD', 'aBcD', '0A', 'a', '00FF', 'ff00ff0']
+	const utf8Texts = [...UTF8_MEASURE_TEXTS, ...UTF8_SEEDED_TEXTS, ...SURROGATE_TEXTS]
+
+	it('measures every hex text the way the shipped walk does', () => {
+		const answers = hexTexts.map((text) => ({
+			text,
+			ours: measureHex(text),
+			theirs: measureHexOracle(text),
+		}))
+
+		expect(answers.filter((row) => row.ours !== row.theirs)).toEqual([])
+		expect(answers.filter((row) => row.theirs === undefined).length).toBeGreaterThan(0)
+		expect(answers.filter((row) => row.theirs !== undefined).length).toBeGreaterThan(0)
+	})
+
+	it('measures every Base64 text the way the shipped walk does', () => {
+		const answers = MEASURE_TEXTS.map((text) => ({
+			text,
+			ours: measureBase64(text),
+			theirs: measureBase64Oracle(text),
+		}))
+
+		expect(answers.filter((row) => row.ours !== row.theirs)).toEqual([])
+		expect(answers.filter((row) => row.theirs === undefined).length).toBeGreaterThan(0)
+		expect(answers.filter((row) => (row.theirs ?? 0) > 3).length).toBeGreaterThan(0)
+	})
+
+	it('measures every UTF-8 text the way the shipped walk does, surrogates included', () => {
+		const answers = utf8Texts.map((text) => ({
+			text,
+			ours: measureUTF8(text),
+			theirs: measureUTF8Oracle(text),
+		}))
+
+		expect(answers.filter((row) => row.ours !== row.theirs)).toEqual([])
+		expect(answers.filter((row) => row.theirs === undefined).length).toBeGreaterThan(0)
+		expect(SURROGATE_TEXTS.map((text) => measureUTF8(text))).toEqual([
+			4,
+			6,
+			8,
+			8,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+		])
+	})
+
+	it('encodes every byte buffer as hex the way the shipped walk does', () => {
+		const buffers = [OCTETS, OCTETS.subarray(250), ...UTF8_RANDOM, ...UTF8_MUTANTS]
+		const drift = buffers.filter((bytes) => encodeHex(bytes) !== encodeHexOracle(bytes))
+
+		expect(buffers.length).toBeGreaterThan(OCTETS.length)
+		expect(drift).toEqual([])
+		expect(encodeHex(OCTETS.subarray(250))).toBe('fafbfcfdfeff')
+	})
+
+	it('encodes the indexed bytes of a view whose own iterator is replaced', () => {
+		const bytes = createIteratedBytes([0xab, 0xcd], [0x01])
+
+		expect(encodeHex(bytes)).toBe('abcd')
 	})
 })

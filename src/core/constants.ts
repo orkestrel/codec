@@ -167,3 +167,15 @@ export const WINDOWS_1252_HIGH: Readonly<Record<string, number>> = Object.freeze
 	0x9e: 0x017e,
 	0x9f: 0x0178,
 })
+
+// === UTF-8
+
+/**
+ * Holds the host's strict UTF-8 decoder, which `decodeUTF8` delegates to.
+ *
+ * @remarks
+ * `fatal` makes the decoder throw on every byte sequence RFC 3629 refuses, and `ignoreBOM` keeps a
+ * leading EF BB BF as U+FEFF where the default strips it. A call without the `stream` option starts
+ * from a fresh state, so a refusal leaves nothing behind for the next call.
+ */
+export const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })

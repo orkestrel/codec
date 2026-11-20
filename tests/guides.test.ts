@@ -33,6 +33,7 @@ const INTERNAL: readonly string[] = Object.freeze([
 	'const BASE64_LOOKUP',
 	'const HEX_ALPHABET',
 	'const HEX_LOOKUP',
+	'const UTF8_DECODER',
 	'const WINDOWS_1252_HIGH',
 ])
 await new GuideCommand({
