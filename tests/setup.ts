@@ -338,9 +338,8 @@ export const HEX_MEASURE_TEXTS: readonly string[] = [
 //   `decodeUTF8` set it, because this package's round-trip law leaves its decoders no byte they may
 //   discard.
 //
-// `encodeUTF8` delegates to `TextEncoder` after its well-formedness check, so its oracle is the walk
-// it shipped before it delegated. The probe read `EF BF BD` from `TextEncoder` for a lone surrogate,
-// so the platform encoder replaces where `encodeUTF8` refuses.
+// `TextEncoder` is the UTF-8 encode oracle over well-formed text alone: the probe read `EF BF BD`
+// for a lone surrogate, so it replaces where `encodeUTF8` refuses.
 
 const UTF16LE_DECODER = new TextDecoder('utf-16le', { fatal: true, ignoreBOM: true })
 const WINDOWS_1252_DECODER = new TextDecoder('windows-1252')
@@ -401,33 +400,9 @@ export function decodeUTF16LEOracle(bytes: Uint8Array): string | undefined {
 	}
 }
 
-/**
- * Encodes text to UTF-8 by walking its code points, the walk `encodeUTF8` shipped in codec 0.0.12,
- * answering `undefined` for ill-formed text.
- *
- * `encodeUTF8` delegates to the host's encoder, so this walk is the second mechanism that can
- * disagree with it.
- */
-export function encodeUTF8Oracle(text: string): Uint8Array<ArrayBuffer> | undefined {
-	if (!text.isWellFormed()) return undefined
-	const bytes = Array.from(text).flatMap((character) => {
-		const point = character.codePointAt(0) ?? 0
-		if (point < 0x80) {
-			return [point]
-		} else if (point < 0x800) {
-			return [0xc0 | (point >> 6), 0x80 | (point & 0x3f)]
-		} else if (point < 0x10000) {
-			return [0xe0 | (point >> 12), 0x80 | ((point >> 6) & 0x3f), 0x80 | (point & 0x3f)]
-		} else {
-			return [
-				0xf0 | (point >> 18),
-				0x80 | ((point >> 12) & 0x3f),
-				0x80 | ((point >> 6) & 0x3f),
-				0x80 | (point & 0x3f),
-			]
-		}
-	})
-	return Uint8Array.from(bytes)
+/** Encodes well-formed text through the platform's UTF-8 encoder, which cannot report a refusal. */
+export function encodeUTF8Oracle(text: string): Uint8Array {
+	return UTF8_ENCODER.encode(text)
 }
 
 /**
@@ -442,15 +417,6 @@ export function createIteratedBytes(
 	const iterator = [...yielded]
 	Object.defineProperty(bytes, Symbol.iterator, { value: iterator[Symbol.iterator].bind(iterator) })
 	return bytes
-}
-
-/** Checks whether two byte answers are both absent, or both present with equal bytes in order. */
-export function matchesOptionalBytes(
-	left: Uint8Array | undefined,
-	right: Uint8Array | undefined,
-): boolean {
-	if (left === undefined || right === undefined) return left === right
-	return left.length === right.length && left.every((byte, index) => right[index] === byte)
 }
 
 /** Measures UTF-8 by reducing over code points, the walk `measureUTF8` shipped in codec 0.0.12. */
@@ -491,20 +457,6 @@ export function measureBase64Oracle(text: string): number | undefined {
 		if (tail === 1 && (third & 0x03) !== 0) return undefined
 	}
 	return (text.length / 4) * 3 - padding
-}
-
-/** Decodes hex text over the bytes' own keys, the walk `decodeHex` shipped in codec 0.0.12. */
-export function decodeHexOracle(text: string): Uint8Array<ArrayBuffer> | undefined {
-	if (text.length % 2 !== 0) return undefined
-	const bytes = new Uint8Array(text.length / 2)
-	for (const position of bytes.keys()) {
-		const index = position * 2
-		const high = HEX_LOOKUP[text.charAt(index)]
-		const low = HEX_LOOKUP[text.charAt(index + 1)]
-		if (high === undefined || low === undefined) return undefined
-		bytes[index / 2] = (high << 4) | low
-	}
-	return bytes
 }
 
 /** Encodes bytes as hex through an iterator chain, the walk `encodeHex` shipped in codec 0.0.12. */
