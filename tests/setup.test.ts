@@ -6,11 +6,14 @@ import {
 	buildRandomBytes,
 	buildUTF8Mutants,
 	buildUTF8Texts,
+	createEmptiedViews,
+	createShrinkingBytes,
 	createIteratedBytes,
 	drawBenchRun,
 	drawCodePoint,
 	mutateBytes,
-	RecordedBytes,
+	ShrinkingCopy,
+	SlicelessBytes,
 	UTF8_BANDS,
 	UTF8_BENCH_RANGES,
 	UTF8_BOM_PERIOD,
@@ -236,15 +239,31 @@ describe('setup generators', () => {
 		expect(new Set(buffers.map((bytes) => bytes.length)).size).toBe(4)
 	})
 
-	it('holds bytes over a supplied buffer and counts the copies taken of them', () => {
-		const bytes = new RecordedBytes(new SharedArrayBuffer(4), [0x68, 0x69])
-		const copy = bytes.slice()
+	it('holds bytes over a supplied buffer whose slice throws', () => {
+		const bytes = new SlicelessBytes(new SharedArrayBuffer(4), [0x68, 0x69])
 
 		expect(bytes.buffer).toBeInstanceOf(SharedArrayBuffer)
-		expect(copy.buffer).toBeInstanceOf(ArrayBuffer)
-		expect(copy).toEqual(new Uint8Array([0x68, 0x69]))
-		expect(bytes.length).toBe(2)
-		expect(bytes.slices).toBe(1)
+		expect(bytes).toHaveLength(2)
+		expect(Array.from(bytes)).toEqual([0x68, 0x69])
+		expect(() => bytes.slice()).toThrow('slice reached')
+	})
+
+	it('shrinks the source buffer when a slice reaches the species constructor', () => {
+		const bytes = createShrinkingBytes([0x68, 0x69, 0x6a, 0x6b])
+		const copy = new Uint8Array(bytes)
+
+		expect(copy).toEqual(new Uint8Array([0x68, 0x69, 0x6a, 0x6b]))
+		expect(Array.from(bytes.slice())).toEqual([0x68, 0x00, 0x00, 0x00])
+		expect(bytes.buffer.byteLength).toBe(1)
+		expect(new ShrinkingCopy(new ArrayBuffer(4, { maxByteLength: 8 }), 3)).toHaveLength(3)
+	})
+
+	it('builds a detached view, an out-of-bounds view, and a fixed view over a shrunk buffer', () => {
+		const views = createEmptiedViews([0x68, 0x69, 0x6a, 0x6b])
+
+		expect(views.map((row) => row.view.length)).toEqual([0, 0, 0])
+		expect(views.map((row) => row.view.buffer.byteLength)).toEqual([0, 1, 2])
+		expect(views[0]?.view.buffer.detached).toBe(true)
 	})
 })
 

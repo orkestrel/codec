@@ -32,7 +32,9 @@ import { WINDOWS_1252_HIGH } from '../../../src/core/constants.js'
 import {
 	decodeUTF8Oracle,
 	decodeUTF16LEOracle,
+	createEmptiedViews,
 	createIteratedBytes,
+	createShrinkingBytes,
 	encodeHexOracle,
 	encodeUTF8Oracle,
 	measureBase64Oracle,
@@ -51,7 +53,7 @@ import {
 	MEASURES,
 	OCTETS,
 	RFC_STANDARD,
-	RecordedBytes,
+	SlicelessBytes,
 	RFC_URL,
 	SEXTETS,
 	SWEEP,
@@ -869,36 +871,44 @@ describe('the host decoder — decodeUTF8 answers what the shipped walk answered
 	})
 
 	it('decodes a view over a SharedArrayBuffer from a copy', () => {
-		const bytes = new RecordedBytes(new SharedArrayBuffer(4), [0x68, 0xe2, 0x82, 0xac])
-		const refused = new RecordedBytes(new SharedArrayBuffer(3), [0x68, 0xe2, 0x82])
-		const growable = new RecordedBytes(new SharedArrayBuffer(2, { maxByteLength: 8 }), [0x68, 0x69])
+		const bytes = new SlicelessBytes(new SharedArrayBuffer(4), [0x68, 0xe2, 0x82, 0xac])
+		const refused = new SlicelessBytes(new SharedArrayBuffer(3), [0x68, 0xe2, 0x82])
+		const growable = new SlicelessBytes(
+			new SharedArrayBuffer(2, { maxByteLength: 8 }),
+			[0x68, 0x69],
+		)
 
 		expect(bytes.buffer).toBeInstanceOf(SharedArrayBuffer)
 		expect(decodeUTF8(bytes)).toBe('h€')
-		expect(bytes.slices).toBe(1)
 		expect(decodeUTF8(refused)).toBeUndefined()
-		expect(refused.slices).toBe(1)
 		expect(decodeUTF8(growable)).toBe('hi')
-		expect(growable.slices).toBe(1)
 		expect(decodeUTF8(new Uint8Array(new SharedArrayBuffer(0)))).toBe('')
 	})
 
-	it('decodes a view over a resizable ArrayBuffer from a copy', () => {
-		const bytes = new RecordedBytes(
+	it('decodes a resizable view whose own slice throws from its bytes', () => {
+		const bytes = new SlicelessBytes(
 			new ArrayBuffer(4, { maxByteLength: 16 }),
 			[0x68, 0xe2, 0x82, 0xac],
 		)
 
+		expect(() => bytes.slice()).toThrow('slice reached')
 		expect(decodeUTF8(bytes)).toBe('h€')
-		expect(bytes.slices).toBe(1)
 	})
 
-	it('decodes a view over a fixed-length ArrayBuffer without a copy', () => {
-		const bytes = new RecordedBytes(new ArrayBuffer(4), [0x68, 0xe2, 0x82, 0xac])
+	it('decodes a resizable view whose species shrinks the buffer to its full bytes', () => {
+		const bytes = createShrinkingBytes([0x68, 0xe2, 0x82, 0xac])
 
 		expect(decodeUTF8(bytes)).toBe('h€')
-		expect(bytes.slices).toBe(0)
+		expect(bytes).toHaveLength(4)
 	})
+
+	for (const row of createEmptiedViews([0x68, 0xe2, 0x82, 0xac])) {
+		it(`answers the empty text for ${row.reason}`, () => {
+			expect(row.view).toHaveLength(0)
+			expect(decodeUTF8(row.view)).toBe('')
+			expect(isUTF8(row.view)).toBe(true)
+		})
+	}
 
 	it('answers a refused call and then an accepted call on the same module instance', () => {
 		expect(decodeUTF8(new Uint8Array([0xe2, 0x82]))).toBeUndefined()

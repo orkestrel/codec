@@ -973,29 +973,70 @@ export const UTF8_KEPT: ReadonlyArray<{
 ]
 
 /**
- * Holds bytes over a buffer the caller supplies and counts the `slice` calls they receive, so a test
- * reads whether a decoder copied the view before handing it to the host.
+ * Holds bytes over a buffer the caller supplies, with a `slice` that throws, so a test reads whether
+ * a decoder copies the view without reaching a hook the caller can override.
  */
-export class RecordedBytes extends Uint8Array<ArrayBufferLike> {
-	#slices = 0
-
-	static get [Symbol.species](): Uint8ArrayConstructor {
-		return Uint8Array
-	}
-
+export class SlicelessBytes extends Uint8Array<ArrayBufferLike> {
 	constructor(buffer: ArrayBufferLike, values: readonly number[]) {
 		super(buffer, 0, values.length)
 		this.set(values)
 	}
 
-	get slices(): number {
-		return this.#slices
+	override slice(): Uint8Array<ArrayBuffer> {
+		throw new Error('slice reached')
 	}
+}
 
-	override slice(start?: number, end?: number): Uint8Array<ArrayBuffer> {
-		this.#slices += 1
-		return super.slice(start, end)
+/**
+ * Builds the copy a species-aware copy constructs, shrinking the source buffer to 1 byte before it
+ * allocates, the way a hook a caller supplies can.
+ */
+export class ShrinkingCopy extends Uint8Array {
+	constructor(buffer: ArrayBuffer, length: number) {
+		buffer.resize(1)
+		super(length)
 	}
+}
+
+/**
+ * Builds a length-tracking view over a resizable buffer holding `values`, whose species constructor
+ * is {@link ShrinkingCopy} bound to that buffer, so a copy through `slice` shrinks the source first.
+ */
+export function createShrinkingBytes(values: readonly number[]): Uint8Array<ArrayBuffer> {
+	const buffer = new ArrayBuffer(values.length, { maxByteLength: values.length * 2 })
+	const bytes = new Uint8Array(buffer)
+	bytes.set(values)
+	Object.defineProperty(bytes, 'constructor', {
+		value: { [Symbol.species]: ShrinkingCopy.bind(null, buffer) },
+	})
+	return bytes
+}
+
+/**
+ * Builds the views a resizable buffer leaves with a length of 0 after holding `values`: one whose
+ * buffer was transferred away, one an offset left out of bounds after a shrink, and a fixed-length
+ * one over a buffer shrunk below it.
+ */
+export function createEmptiedViews(values: readonly number[]): ReadonlyArray<{
+	readonly view: Uint8Array<ArrayBuffer>
+	readonly reason: string
+}> {
+	const detached = new ArrayBuffer(values.length, { maxByteLength: values.length * 2 })
+	const offset = new ArrayBuffer(values.length, { maxByteLength: values.length * 2 })
+	const fixed = new ArrayBuffer(values.length, { maxByteLength: values.length * 2 })
+	const views = [
+		{ view: new Uint8Array(detached), reason: 'a view whose resizable buffer was transferred' },
+		{ view: new Uint8Array(offset, 2), reason: 'an offset view a shrink left out of bounds' },
+		{
+			view: new Uint8Array(fixed, 0, values.length),
+			reason: 'a fixed-length view over a buffer shrunk below it',
+		},
+	]
+	for (const entry of views) entry.view.set(values.slice(entry.view.byteOffset))
+	detached.transfer()
+	offset.resize(1)
+	fixed.resize(2)
+	return views
 }
 
 // ── The UTF-8 bench fixtures ─────────────────────────────────────────────────
